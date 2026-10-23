@@ -1,5 +1,7 @@
 import Foundation
 
+/// Tracks consecutive-day focus streaks, persisted in UserDefaults under `streak.*` keys.
+/// A streak counts calendar days with at least one completed session, not session counts.
 class StreakManager: ObservableObject {
     static let shared = StreakManager()
 
@@ -13,6 +15,9 @@ class StreakManager: ObservableObject {
         lastCompletionDate = UserDefaults.standard.object(forKey: "streak.lastCompletionDate") as? Date
     }
 
+    /// Records a completed session toward the streak. Same-day completions are ignored
+    /// (a day only counts once); a completion the day after the last one extends the streak;
+    /// any longer gap resets it to 1. Longest streak and last-completion date are persisted.
     func recordSession() {
         let calendar = Calendar.current
         let today = Date()

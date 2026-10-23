@@ -1,6 +1,7 @@
 import SwiftUI
 
 // --- CAT ICON VIEW ---
+/// Renders the bundled face_cat image at a given size, falling back to the emoji when the asset can't be loaded.
 struct CatIconView: View {
     let emoji: String
     let size: CGFloat
@@ -22,6 +23,7 @@ struct CatIconView: View {
 }
 
 // --- CAT COLLECTION VIEW ---
+/// Daily completed-session score for the island: one cat icon per completed session, dim dots for the remainder, and a "+N" overflow badge past the goal.
 struct ScoreCatView: View {
     let completed: Int
     let goal: Int
@@ -50,6 +52,7 @@ struct ScoreCatView: View {
 }
 
 // --- DESIGN A: THE GRID ---
+/// Alternate island score display: a 4x2 grid of glowing dots, one per completed session, with a numeric overflow label.
 struct ScoreGridView: View {
     let completed: Int
     var goal: Int = 8
@@ -86,6 +89,7 @@ struct ScoreGridView: View {
 }
 
 // --- DESIGN B: THE PILLAR ---
+/// Alternate island score display: a vertical capsule that fills toward the daily goal, with the completed count above it.
 struct ScorePillarView: View {
     let completed: Int
     var goal: Int = 8
@@ -123,6 +127,7 @@ struct ScorePillarView: View {
 }
 
 // --- DESIGN C: THE ZEN RING ---
+/// Alternate island score display: a progress ring toward the daily goal with the count centered and a crown once the goal is met.
 struct ScoreRingView: View {
     let completed: Int
     var goal: Int = 8

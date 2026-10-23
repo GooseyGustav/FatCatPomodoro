@@ -1,0 +1,21 @@
+name: FatCatPomodoro
+
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.4
+
+targetTemplates:
+  AppBase:
+    type: application
+    platform: macOS
+    sources: [Sources/FatCatPomodoro]
+
+targets:
+  FatCatPomodoro:
+    templates: [AppBase]
+
+  FatCatPomodoroDirect:
+    templates: [AppBase]
+    dependencies:
+      - package: Sparkle

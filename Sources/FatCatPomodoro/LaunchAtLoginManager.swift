@@ -1,6 +1,9 @@
 import Foundation
 import ServiceManagement
 
+/// Thin wrapper around `SMAppService` for macOS 13+ login-item registration.
+/// Setting `isEnabled` registers/unregisters the app with the system immediately;
+/// on older macOS versions it stays false and does nothing.
 class LaunchAtLoginManager: ObservableObject {
     static let shared = LaunchAtLoginManager()
 

@@ -24,6 +24,8 @@
 	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>FatCatPomodoro can automatically turn Do Not Disturb on and off around focus sessions by controlling Control Center.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>FatCatPomodoro logs your completed focus sessions to a calendar you choose and shows your upcoming events as quick-start focus suggestions.</string>
 	<key>NSCalendarsUsageDescription</key>

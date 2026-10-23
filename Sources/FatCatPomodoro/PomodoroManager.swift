@@ -8,6 +8,11 @@ enum PomodoroSessionType {
     case breakTime
 }
 
+/// Central session state machine: idle → running → pausedConfirming, across
+/// work and break sessions, including infinite-flow (count-up) mode and the
+/// long-break cycle after every `sessionsUntilLongBreak` work sessions.
+/// Session completion fans out to local history (PomodoroHistoryManager),
+/// EventKit or Jarvi calendars, and Jarvi analytics.
 class PomodoroManager: ObservableObject {
     @Published var timeRemaining: Int = 0
     @Published var isRunning: Bool = false
@@ -23,6 +28,8 @@ class PomodoroManager: ObservableObject {
     // Pro Settings
     @AppStorage("pomodoro.longBreakDuration") var longBreakDuration: Int = 20 * 60
     @AppStorage("pomodoro.sessionsUntilLongBreak") var sessionsUntilLongBreak: Int = 4
+    /// Work sessions completed since the last long break; persisted so the
+    /// long-break cycle survives app restarts. Reset when a long break fires.
     @AppStorage("pomodoro.sessionsInCycle") var sessionsInCycle: Int = 0
     @AppStorage("pomodoro.dndAutoToggle") var dndAutoToggle: Bool = false
     @AppStorage("pomodoro.alarmSoundName") var alarmSoundName: String = "Glass"
@@ -32,6 +39,7 @@ class PomodoroManager: ObservableObject {
     }
     @AppStorage("pomodoro.strictModeEnabled") var strictModeEnabled: Bool = false
     @AppStorage("pomodoro.targetCalendarID") var targetCalendarID: String = ""
+    @AppStorage("pomodoro.breakTargetCalendarID") var breakTargetCalendarID: String = ""
     @AppStorage("pomodoro.calendarSource") var calendarSource: String = "mac"
     @AppStorage("pomodoro.todoSource") var todoSource: String = "reminders" {
         didSet { fetchReminders() }
@@ -44,6 +52,8 @@ class PomodoroManager: ObservableObject {
     @Published var showingAlert: Bool = false
     @Published var alertTitle: String = ""
     @Published var alertMessage: String = ""
+    /// Paused mid-work with the abort confirmation UI showing — the user must
+    /// choose to log partial progress, discard, or resume.
     @Published var isPausedConfirming: Bool = false
     
     // Custom Pomodoro task tracking properties
@@ -63,9 +73,30 @@ class PomodoroManager: ObservableObject {
     private let eventStore = EKEventStore()
     private var reminderTasks: [String: EKReminder] = [:]
     
-    @Published var workDuration: Int = 25 * 60 {
+    /// Open-ended flow (∞ on the dial): the timer counts up from 0 until manually stopped.
+    @AppStorage("pomodoro.infiniteFlow") var isInfiniteFlow: Bool = false {
         didSet {
             if !isRunning && sessionType == .work {
+                timeRemaining = isInfiniteFlow ? 0 : workDuration
+            }
+        }
+    }
+
+    /// Seconds of work done in the current session — valid for both count-up and countdown.
+    var elapsedWorkSeconds: Int {
+        isInfiniteFlow ? timeRemaining : workDuration - timeRemaining
+    }
+
+    /// A work session that was started and not yet completed/discarded —
+    /// running or merely paused. Paused sessions must keep showing the frozen
+    /// timer, not the start page.
+    var hasActiveWorkSession: Bool {
+        sessionType == .work && sessionStartDate != nil
+    }
+
+    @Published var workDuration: Int = 25 * 60 {
+        didSet {
+            if !isRunning && sessionType == .work && !isInfiniteFlow {
                 timeRemaining = workDuration
             }
         }
@@ -83,7 +114,7 @@ class PomodoroManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
-        self.timeRemaining = self.workDuration
+        self.timeRemaining = self.isInfiniteFlow ? 0 : self.workDuration
         
         // Observe history changes to keep counter accurate
         PomodoroHistoryManager.shared.$history
@@ -106,6 +137,7 @@ class PomodoroManager: ObservableObject {
             .store(in: &cancellables)
 
         observeMidnight()
+        observeSleepWake()
         setupJarviRemoteObserver()
         
         if enableReminders || JarviManager.shared.isLinked {
@@ -195,6 +227,12 @@ class PomodoroManager: ObservableObject {
         recentTasks = UserDefaults.standard.stringArray(forKey: "pomodoro.recentTasks") ?? []
     }
     
+    // MARK: - Task Sources
+
+    /// Refresh the task list from the configured source (Apple Reminders via
+    /// EventKit, or Jarvi), falling back to the manually saved recents when
+    /// no live source is enabled. Jarvi results are filtered against
+    /// `pendingCompletions` so just-completed tasks don't reappear.
     func fetchReminders() {
         if !enableReminders && !JarviManager.shared.isLinked {
             loadRecentTasks()
@@ -222,6 +260,8 @@ class PomodoroManager: ObservableObject {
         fetchReminders()
     }
 
+    /// Persist the current task to the local recents list (most recent first,
+    /// capped at 10). No-op while a live todo source is active.
     func saveTaskToRecent() {
         if enableReminders || JarviManager.shared.isLinked { return } // Don't mix manual recent tasks with live Jarvi todos
         
@@ -233,6 +273,9 @@ class PomodoroManager: ObservableObject {
         UserDefaults.standard.set(recentTasks, forKey: "pomodoro.recentTasks")
     }
 
+    /// Remove a task locally and mark it complete in the backing source.
+    /// Deliberately skips an immediate Jarvi re-fetch — it races with
+    /// completeGoogleTask and can wipe the list with stale data.
     func removeTaskFromRecent(_ title: String) {
         recentTasks.removeAll { $0 == title }
         UserDefaults.standard.set(recentTasks, forKey: "pomodoro.recentTasks")
@@ -252,6 +295,10 @@ class PomodoroManager: ObservableObject {
         // data that wipes the whole list.
     }
     
+    /// Mark a task done everywhere it lives: the todo source, and — when it is
+    /// the actively running session — the target calendar, local history, and
+    /// streak. Registers the title as a pending completion so background
+    /// refreshes don't resurrect it before the server catches up.
     func completeTask(_ title: String) {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let taskTitle = trimmedTitle.isEmpty ? "Completed Task" : trimmedTitle
@@ -300,10 +347,57 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Complete whatever task is currently entered, if any.
     func completeCurrentTask() {
         let title = currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         completeTask(title)
+    }
+
+    // MARK: - Sleep/Wake Auto-Pause
+
+    /// Auto-pause while the user is away. System sleep alone is NOT enough:
+    /// in clamshell mode (external display + power) closing the lid never
+    /// sleeps the Mac, so the timer would keep counting all night. Screen
+    /// sleep covers that case. On return, the session resumes and the
+    /// wall-clock anchors are shifted so logged durations exclude the gap.
+    private var autoPauseStart: Date?
+
+    /// Hook both system sleep AND display sleep notifications — see
+    /// `autoPauseStart` for why display sleep matters (clamshell mode).
+    private func observeSleepWake() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.autoPauseForAbsence()
+            }
+        }
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.autoResumeFromAbsence()
+            }
+        }
+    }
+
+    /// Silently pause when the machine or screens sleep and record when the
+    /// gap began. Guarded so overlapping sleep notifications don't double-fire.
+    private func autoPauseForAbsence() {
+        guard isRunning, autoPauseStart == nil else { return }
+        autoPauseStart = Date()
+        pause(true) // silent — not a user action
+    }
+
+    /// Resume on wake, shifting the wall-clock anchors forward by the sleep
+    /// gap so logged durations only count time actually spent at the Mac.
+    private func autoResumeFromAbsence() {
+        guard let pausedAt = autoPauseStart else { return }
+        autoPauseStart = nil
+        let gap = Date().timeIntervalSince(pausedAt)
+        if gap > 0 {
+            sessionStartDate = sessionStartDate?.addingTimeInterval(gap)
+            breakSessionStart = breakSessionStart?.addingTimeInterval(gap)
+        }
+        start()
     }
 
     private func observeMidnight() {
@@ -316,6 +410,9 @@ class PomodoroManager: ObservableObject {
         }
     }
 
+    // MARK: - Session Control
+
+    /// Primary play/pause control for the UI.
     func toggle() {
         if isRunning {
             pause()
@@ -324,9 +421,12 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Stop-button handler. Sessions of 10 seconds or less are treated as
+    /// accidental clicks and auto-discarded without prompting; anything longer
+    /// pauses and asks whether to log partial progress or discard.
     func handleAbortClick() {
-        let elapsedSeconds = workDuration - timeRemaining
-        
+        let elapsedSeconds = elapsedWorkSeconds
+
         // If under 10 seconds, immediately discard and reset without prompting
         if elapsedSeconds <= 10 {
             self.discardAndReset()
@@ -338,8 +438,11 @@ class PomodoroManager: ObservableObject {
         isPausedConfirming = true
     }
     
+    /// Log an interrupted session — calendar, local history, and Jarvi
+    /// analytics, all tagged "(Partial)" — then reset. Sub-10-second sessions
+    /// are discarded instead of logged.
     func logPartialProgress() {
-        let elapsedSeconds = workDuration - timeRemaining
+        let elapsedSeconds = elapsedWorkSeconds
         guard elapsedSeconds > 10 else {
             discardAndReset()
             return
@@ -369,11 +472,15 @@ class PomodoroManager: ObservableObject {
         self.reset()
     }
     
+    /// Abandon the session without logging it anywhere; also clears the task.
     func discardAndReset() {
         self.currentTask = ""
         self.reset()
     }
     
+    /// Start or resume the current session. The first start of a work session
+    /// stamps `sessionStartDate` and saves the task to recents; also toggles
+    /// DND if enabled and announces FLOW_START/BREAK_START to Jarvi.
     func start() {
         isRunning = true
         isPausedConfirming = false
@@ -386,7 +493,8 @@ class PomodoroManager: ObservableObject {
             }
             if dndAutoToggle { NotificationManager.shared.setDND(enabled: true) }
             let upcomingBreakMins = (sessionsInCycle + 1 >= sessionsUntilLongBreak) ? longBreakDuration / 60 : breakDuration / 60
-            JarviManager.shared.sendFatcatEvent("FLOW_START", title: currentTask, workDurationMins: workDuration / 60, breakDurationMins: upcomingBreakMins)
+            // 0 minutes signals an open-ended (∞) flow session
+            JarviManager.shared.sendFatcatEvent("FLOW_START", title: currentTask, workDurationMins: isInfiniteFlow ? 0 : workDuration / 60, breakDurationMins: upcomingBreakMins)
         } else {
             // It's a break
             JarviManager.shared.sendFatcatEvent("BREAK_START")
@@ -400,6 +508,9 @@ class PomodoroManager: ObservableObject {
     }
     
     // silent=true for internal stops (completeSession, startWorkSession) — no outbound event.
+    /// Stop the countdown. The `silent` flag suppresses the outbound Jarvi
+    /// pause event — used when a different event (e.g. COMPLETED) is emitted
+    /// by the caller instead.
     func pause(_ silent: Bool = false) {
         if isRunning && !silent {
             if sessionType == .work {
@@ -430,17 +541,22 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Return the current session type to its idle, full-duration state
+    /// (0 for ∞ flow, which counts up).
     func reset() {
         pause()
         isPausedConfirming = false
         sessionStartDate = nil
         if sessionType == .work {
-            timeRemaining = workDuration
+            timeRemaining = isInfiniteFlow ? 0 : workDuration
         } else {
             timeRemaining = breakDuration
         }
     }
     
+    /// Asymmetric by design: skipping work completes the session (full
+    /// logging fan-out via completeSession), while skipping a break just
+    /// starts the next work session without logging.
     func skip() {
         isPausedConfirming = false
         if sessionType == .work {
@@ -450,7 +566,18 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// One-second heartbeat: counts up in ∞ flow, otherwise counts down and
+    /// rolls into the next phase at zero. Also drives strict-mode browser-tab
+    /// enforcement every 5 seconds during work.
     private func tick() {
+        // Infinite flow: count upwards until the user stops the session
+        if isInfiniteFlow && sessionType == .work {
+            timeRemaining += 1
+            if strictModeEnabled && timeRemaining % 5 == 0 {
+                enforceStrictMode()
+            }
+            return
+        }
         if timeRemaining > 0 {
             timeRemaining -= 1
             if strictModeEnabled && sessionType == .work && timeRemaining % 5 == 0 {
@@ -516,6 +643,10 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Finish a work session: fan out to Jarvi analytics/events, the chosen
+    /// calendar (EventKit or Jarvi/Google), local history, and the streak,
+    /// then advance the long-break cycle and queue the appropriate break.
+    /// Called on a break, it simply defers to startWorkSession().
     private func completeSession() {
         pause(true) // silent: COMPLETED event is sent below, not FLOW_PAUSE
         isPausedConfirming = false
@@ -524,18 +655,24 @@ class PomodoroManager: ObservableObject {
             
             let trimmedTask = currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
             let taskTitle = trimmedTask.isEmpty ? "FatCatFlow Session" : trimmedTask
-            
-            JarviManager.shared.logPomodoroSession(durationMinutes: workDuration / 60, taskName: taskTitle, interrupted: false)
-            JarviManager.shared.sendFatcatEvent("COMPLETED", title: taskTitle, workDurationMins: workDuration / 60, breakDurationMins: breakDuration / 60)
+
+            // Actual focused time — equals the planned duration at natural
+            // completion, the counted-up time for ∞, and the partial time
+            // when the user hits Finish early.
+            let flowSeconds = elapsedWorkSeconds
+            let flowMins = max(1, flowSeconds / 60)
+
+            JarviManager.shared.logPomodoroSession(durationMinutes: flowMins, taskName: taskTitle, interrupted: false)
+            JarviManager.shared.sendFatcatEvent("COMPLETED", title: taskTitle, workDurationMins: flowMins, breakDurationMins: breakDuration / 60)
 
             // If not linked to Jarvi, we send FLOW_END as a fallback webhook.
             // If linked, logPomodoroSession (analytics) and the Calendar block are sufficient.
             if !(todoSource == "jarvi" || JarviManager.shared.isLinked) {
-                JarviManager.shared.sendEvent(type: "FLOW_END", sessionId: UUID().uuidString, title: taskTitle, workMins: workDuration / 60, breakMins: breakDuration / 60)
+                JarviManager.shared.sendEvent(type: "FLOW_END", sessionId: UUID().uuidString, title: taskTitle, workMins: flowMins, breakMins: breakDuration / 60)
             }
-            
+
             // Capture date bounds and durations
-            let startDate = sessionStartDate ?? Date().addingTimeInterval(-Double(workDuration))
+            let startDate = sessionStartDate ?? Date().addingTimeInterval(-Double(flowSeconds))
             let endDate = Date()
             let duration = Int(endDate.timeIntervalSince(startDate))
             
@@ -573,6 +710,8 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// End the break — logging the chosen activity to the calendar, honoring
+    /// the Pro break-calendar override — and arm a fresh work session.
     private func startWorkSession() {
         pause(true) // silent: break ending naturally, not a user pause
         isPausedConfirming = false
@@ -582,11 +721,15 @@ class PomodoroManager: ObservableObject {
         let breakStart = breakSessionStart ?? breakEnd.addingTimeInterval(-Double(breakDuration))
         let activityTitle = breakActivity.isEmpty ? "Break" : "\(breakActivity) Break"
         if !breakActivity.isEmpty {
-            let cleanCalendarId = targetCalendarID.isEmpty ? "primary" : targetCalendarID
-            if calendarSource == "jarvi" || calendarSource == "google" {
-                JarviManager.shared.addGoogleCalendarEvent(title: activityTitle, startDate: breakStart, endDate: breakEnd, calendarId: cleanCalendarId)
-            } else {
-                CalendarManager.shared.addEvent(title: activityTitle, startDate: breakStart, endDate: breakEnd, calendarIdentifier: targetCalendarID)
+            Task { @MainActor in
+                let actualBreakID = StoreManager.shared.isUnlocked ? breakTargetCalendarID : ""
+                let actualTargetCalendarID = actualBreakID.isEmpty ? targetCalendarID : actualBreakID
+                let cleanCalendarId = actualTargetCalendarID.isEmpty ? "primary" : actualTargetCalendarID
+                if calendarSource == "jarvi" || calendarSource == "google" {
+                    JarviManager.shared.addGoogleCalendarEvent(title: activityTitle, startDate: breakStart, endDate: breakEnd, calendarId: cleanCalendarId)
+                } else {
+                    CalendarManager.shared.addEvent(title: activityTitle, startDate: breakStart, endDate: breakEnd, calendarIdentifier: actualTargetCalendarID)
+                }
             }
         }
         breakActivity = ""
@@ -604,7 +747,7 @@ class PomodoroManager: ObservableObject {
         
         NotificationManager.shared.sessionComplete(isBreak: false)
         sessionType = .work
-        timeRemaining = workDuration
+        timeRemaining = isInfiniteFlow ? 0 : workDuration
         if autoStartWork { start() }
     }
     
@@ -616,6 +759,7 @@ class PomodoroManager: ObservableObject {
     }
     
     var progress: Double {
+        if isInfiniteFlow && sessionType == .work { return 0 } // no end → no ring
         let total = sessionType == .work ? Double(workDuration) : Double(breakDuration)
         guard total > 0 else { return 0 }
         return 1.0 - (Double(timeRemaining) / total)

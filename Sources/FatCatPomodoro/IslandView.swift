@@ -6,9 +6,9 @@ import StoreKit
 
 struct IslandView: View {
     @ObservedObject var pomodoroManager: PomodoroManager
-    let isNotchedDisplay: Bool
     @ObservedObject private var streakManager = StreakManager.shared
     @ObservedObject private var storeManager = StoreManager.shared
+    @ObservedObject private var historyManager = PomodoroHistoryManager.shared
     @State private var isExpanded = false
     @State private var showExpandedContent = false
     @State private var capturedHeight: CGFloat = 295
@@ -27,6 +27,12 @@ struct IslandView: View {
     // Hold to Quit state
     @State private var quitHoldProgress: CGFloat = 0
     @State private var isHoldingQuit = false
+    @State private var finishHoldProgress: Double = 0
+
+    // Keyboard control (active while the island is expanded)
+    @State private var keyMonitor: Any? = nil
+    @State private var minuteBuffer: String = ""
+    @State private var minuteBufferTask: Task<Void, Never>? = nil
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -53,9 +59,22 @@ struct IslandView: View {
         }
     }
 
+    /// Chip row content: today's completed session titles, newest first — deduplicated, max 8.
+    private var chipTasks: [String] {
+        var seen = Set<String>()
+        return historyManager.todaysHistory
+            .sorted { $0.startDate > $1.startDate }
+            .map { $0.title.replacingOccurrences(of: " (Partial)", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0 != "FatCatFlow Session" && seen.insert($0.lowercased()).inserted }
+            .prefix(8)
+            .map { $0 }
+    }
+
     private var displayTime: String {
-        if pomodoroManager.isRunning {
+        if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming || pomodoroManager.hasActiveWorkSession {
             return pomodoroManager.timeString
+        } else if displayMode == .work && pomodoroManager.isInfiniteFlow {
+            return "∞"
         } else {
             let total = displayMode == .work ? pomodoroManager.workDuration : pomodoroManager.breakDuration
             return "\(total / 60)m"
@@ -63,12 +82,12 @@ struct IslandView: View {
     }
 
     private func snapshotExpandedHeight() -> CGFloat {
-        if !storeManager.isUnlocked {
+        if !storeManager.isUnlocked && pomodoroManager.completedToday >= 3 {
             // Tall enough for the full paywall: products, Restore Purchases, and
             // the 3.1.2-required subscription disclosure + Terms/Privacy links.
             return 350
         }
-        if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming {
+        if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming || pomodoroManager.hasActiveWorkSession {
             if pomodoroManager.sessionType == .work {
                 // Chips are hidden during an active work session — compact height
                 return pomodoroManager.currentTask.isEmpty ? 202 : 172
@@ -78,7 +97,7 @@ struct IslandView: View {
         if displayMode == .breakTime {
             return 262
         }
-        let hasRecent = !pomodoroManager.recentTasks.isEmpty
+        let hasRecent = !chipTasks.isEmpty
         return hasRecent ? 262 : 238
     }
     
@@ -119,7 +138,7 @@ struct IslandView: View {
                         .frame(width: dim.width, height: dim.height)
                 } else if showExpandedContent {
                     // Expanded: content starts below the notch gap, fills remaining height
-                    if storeManager.isUnlocked {
+                    if storeManager.isUnlocked || pomodoroManager.completedToday < 3 {
                         expandedPomodoroView
                             .padding(.top, notchHeight)
                             .frame(width: dim.width, height: dim.height, alignment: .top)
@@ -137,7 +156,7 @@ struct IslandView: View {
             }
             .frame(width: dim.width, height: dim.height)
             .clipShape(
-                AnyShape(isNotchedDisplay ? AnyShape(NotchShape(bottomRadius: cornerRadius)) : AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
+                NotchShape(bottomRadius: cornerRadius)
             )
             // Progress ring
             .overlay {
@@ -147,39 +166,28 @@ struct IslandView: View {
                     let r: CGFloat = 17  // increased from 15 to account for outward shift
                     let offset: CGFloat = 2 // 2px outward shift
 
-                    if isNotchedDisplay {
-                        // Traces the notch outline: down right side, across bottom, up left side
-                        Path { p in
-                            // Sharp top-right corner — start slightly outside
-                            p.move(to: CGPoint(x: w + offset, y: 0))
-                            // Straight down the right side
-                            p.addLine(to: CGPoint(x: w + offset, y: h - r + offset))
-                            // Bottom-right arc
-                            p.addArc(center: CGPoint(x: w - r + offset, y: h - r + offset),
-                                     radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-                            // Across the bottom
-                            p.addLine(to: CGPoint(x: r - offset, y: h + offset))
-                            // Bottom-left arc
-                            p.addArc(center: CGPoint(x: r - offset, y: h - r + offset),
-                                     radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
-                            // Straight up the left side
-                            p.addLine(to: CGPoint(x: -offset, y: 0))
-                        }
-                        .trim(from: 0, to: pomodoroManager.progress)
-                        .stroke(
-                            LinearGradient(colors: [.orange, .red], startPoint: .trailing, endPoint: .leading),
-                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
-                        )
-                    } else {
-                        // Full pill outline for non-notched displays
-                        RoundedRectangle(cornerRadius: r, style: .continuous)
-                            .trim(from: 0, to: pomodoroManager.progress)
-                            .stroke(
-                                LinearGradient(colors: [.orange, .red], startPoint: .trailing, endPoint: .leading),
-                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
-                            )
-                            .frame(width: w + (offset * 2), height: h + (offset * 2))
+                    // Traces the notch outline: down right side, across bottom, up left side
+                    Path { p in
+                        // Sharp top-right corner — start slightly outside
+                        p.move(to: CGPoint(x: w + offset, y: 0))
+                        // Straight down the right side
+                        p.addLine(to: CGPoint(x: w + offset, y: h - r + offset))
+                        // Bottom-right arc
+                        p.addArc(center: CGPoint(x: w - r + offset, y: h - r + offset),
+                                 radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+                        // Across the bottom
+                        p.addLine(to: CGPoint(x: r - offset, y: h + offset))
+                        // Bottom-left arc
+                        p.addArc(center: CGPoint(x: r - offset, y: h - r + offset),
+                                 radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+                        // Straight up the left side
+                        p.addLine(to: CGPoint(x: -offset, y: 0))
                     }
+                    .trim(from: 0, to: pomodoroManager.progress)
+                    .stroke(
+                        LinearGradient(colors: [.orange, .red], startPoint: .trailing, endPoint: .leading),
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                    )
                 }
             }
             .contentShape(Rectangle())
@@ -225,18 +233,9 @@ struct IslandView: View {
                 }
             }
             .onTapGesture {
-                if isExpanded {
-                    expandTask?.cancel()
-                    isHovered = false
-                    withAnimation(.easeOut(duration: 0.1)) {
-                        showExpandedContent = false
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            isExpanded = false
-                        }
-                    }
-                } else {
+                // When expanded, ignore taps on the island body — stray clicks between
+                // buttons/fields shouldn't tuck it back in. Hover-out handles collapsing.
+                if !isExpanded {
                     // Snapshot height NOW — before animation starts — so the frame size is stable
                     capturedHeight = snapshotExpandedHeight()
                     isHovered = true
@@ -319,12 +318,202 @@ struct IslandView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleIslandExpansion"))) { _ in
-            toggleExpansion()
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleIslandExpansion"))) { note in
+            let viaHotkey = (note.userInfo?["viaHotkey"] as? Bool) ?? false
+            toggleExpansion(focusOnOpen: viaHotkey)
+        }
+        .onAppear {
+            installKeyMonitor()
         }
     }
-    
-    private func toggleExpansion() {
+
+    // MARK: - Keyboard control
+
+    /// One app-wide keyDown monitor; only acts while the island is expanded, its
+    /// window is key, and no shortcut is being recorded in settings.
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+            handleIslandKeyDown(event)
+        }
+    }
+
+    private func handleIslandKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard isExpanded, showExpandedContent,
+              !HotkeyManager.shared.isRecording,
+              NSApp.keyWindow is IslandWindow else { return event }
+
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let isIdle = !pomodoroManager.isRunning && !pomodoroManager.isPausedConfirming && !pomodoroManager.hasActiveWorkSession
+
+        // ⌘, — open settings
+        if flags == .command && event.charactersIgnoringModifiers == "," {
+            showSettings = true
+            return nil
+        }
+
+        // ⎋ — close settings first, then the island
+        if event.keyCode == 53 {
+            if showSettings {
+                showSettings = false
+            } else {
+                toggleExpansion()
+            }
+            return nil
+        }
+
+        // ⇧← / ⇧→ — switch Flow ↔ Break (only while no session is in flight)
+        if flags == .shift && (event.keyCode == 123 || event.keyCode == 124) {
+            if isIdle {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    displayMode = displayMode == .work ? .breakTime : .work
+                    pomodoroManager.sessionType = displayMode
+                    pomodoroManager.reset()
+                }
+            }
+            return nil
+        }
+
+        // ⇥ / ⇧⇥ — cycle through today's task chips
+        if event.keyCode == 48 && (flags.isEmpty || flags == .shift) {
+            if isIdle && displayMode == .work {
+                cycleChipTask(backwards: flags == .shift)
+            }
+            return nil
+        }
+
+        // ⌘1 / ⌘2 / ⌘3 — duration presets (flow: 25/45/90, break: 5/10/15)
+        if flags == .command, let chars = event.charactersIgnoringModifiers,
+           let slot = ["1": 0, "2": 1, "3": 2][chars] {
+            if isIdle {
+                applyDurationPreset(slot)
+            }
+            return nil
+        }
+
+        guard flags.isEmpty else { return event }
+
+        // ↑ / ↓ — nudge the timer in 5-minute steps (mirrors the dial, incl. ∞)
+        if event.keyCode == 126 || event.keyCode == 125 {
+            if isIdle {
+                nudgeDuration(up: event.keyCode == 126)
+            }
+            return nil
+        }
+
+        // ↩ — start/resume when the title field isn't consuming it via onSubmit
+        if event.keyCode == 36 && !taskFieldFocused {
+            startFromKeyboard()
+            return nil
+        }
+
+        // 0–9 — quick timer entry while no title has been typed (digits typed
+        // after a title character belong to the title). 0 = infinite flow.
+        if isIdle,
+           let chars = event.charactersIgnoringModifiers, chars.count == 1,
+           let c = chars.first, c.isNumber,
+           displayMode == .breakTime || pomodoroManager.currentTask.isEmpty {
+            appendMinuteDigit(chars)
+            return nil
+        }
+
+        return event
+    }
+
+    private func startFromKeyboard() {
+        pomodoroManager.currentTask = pomodoroManager.currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
+        pomodoroManager.saveTaskToRecent()
+        if pomodoroManager.isPausedConfirming {
+            pomodoroManager.isPausedConfirming = false
+            pomodoroManager.start()
+        } else if !pomodoroManager.isRunning {
+            if displayMode != pomodoroManager.sessionType {
+                pomodoroManager.sessionType = displayMode
+                pomodoroManager.reset()
+            }
+            pomodoroManager.start()
+        }
+    }
+
+    /// Tab-cycle the currentTask through today's chips; the active chip
+    /// highlights orange and ↩ starts it.
+    private func cycleChipTask(backwards: Bool) {
+        let chips = chipTasks
+        guard !chips.isEmpty else { return }
+        let next: Int
+        if let idx = chips.firstIndex(of: pomodoroManager.currentTask) {
+            next = backwards ? (idx - 1 + chips.count) % chips.count : (idx + 1) % chips.count
+        } else {
+            next = backwards ? chips.count - 1 : 0
+        }
+        withAnimation(.easeInOut(duration: 0.15)) {
+            pomodoroManager.currentTask = chips[next]
+        }
+    }
+
+    private func applyDurationPreset(_ slot: Int) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            if displayMode == .work {
+                pomodoroManager.isInfiniteFlow = false
+                pomodoroManager.workDuration = [25, 45, 90][slot] * 60
+            } else {
+                pomodoroManager.breakDuration = [5, 10, 15][slot] * 60
+            }
+        }
+    }
+
+    /// Step the idle timer in snapped 5-minute increments, matching the dial's
+    /// layout: on the flow dial ∞ sits left of 5, so stepping below 5 lands on ∞.
+    private func nudgeDuration(up: Bool) {
+        if displayMode == .work {
+            if pomodoroManager.isInfiniteFlow {
+                if up {
+                    pomodoroManager.isInfiniteFlow = false
+                    pomodoroManager.workDuration = 5 * 60
+                }
+                return
+            }
+            let v = pomodoroManager.workDuration / 60
+            if up {
+                pomodoroManager.workDuration = min(120, (v / 5) * 5 + 5) * 60
+            } else if v <= 5 {
+                pomodoroManager.isInfiniteFlow = true
+            } else {
+                pomodoroManager.workDuration = max(5, ((v - 1) / 5) * 5) * 60
+            }
+        } else {
+            let v = pomodoroManager.breakDuration / 60
+            let newV = up ? (v < 5 ? 5 : min(60, (v / 5) * 5 + 5))
+                          : (v <= 5 ? 1 : ((v - 1) / 5) * 5)
+            pomodoroManager.breakDuration = newV * 60
+        }
+    }
+
+    /// Typed digits accumulate into minutes ("2","5" → 25m) and reset after a
+    /// short pause; the dial reflects the value live.
+    private func appendMinuteDigit(_ digit: String) {
+        minuteBufferTask?.cancel()
+        minuteBuffer = String((minuteBuffer + digit).suffix(3))
+        if let value = Int(minuteBuffer) {
+            if displayMode == .work {
+                if value == 0 {
+                    pomodoroManager.isInfiniteFlow = true
+                } else {
+                    pomodoroManager.isInfiniteFlow = false
+                    pomodoroManager.workDuration = min(120, max(5, value)) * 60
+                }
+            } else {
+                pomodoroManager.breakDuration = min(60, max(1, value)) * 60
+            }
+        }
+        minuteBufferTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { minuteBuffer = "" }
+        }
+    }
+
+    private func toggleExpansion(focusOnOpen: Bool = false) {
         if isExpanded {
             expandTask?.cancel()
             isHovered = false
@@ -351,6 +540,15 @@ struct IslandView: View {
                         withAnimation(.easeIn(duration: 0.15)) {
                             showExpandedContent = true
                         }
+                        if focusOnOpen {
+                            // Hotkey open: make the island key so typing lands in
+                            // the title field (and the key monitor) right away.
+                            NSApp.activate(ignoringOtherApps: true)
+                            NSApp.windows.first { $0 is IslandWindow }?.makeKeyAndOrderFront(nil)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                taskFieldFocused = true
+                            }
+                        }
                     }
                 }
             }
@@ -366,7 +564,7 @@ struct IslandView: View {
     var compactPomodoroView: some View {
         HStack(spacing: 0) {
             // Left wing: show countdown when running, otherwise respect user preference
-            if storeManager.isUnlocked {
+            if storeManager.isUnlocked || pomodoroManager.completedToday < 3 {
                 Group {
                     if pomodoroManager.isRunning {
                         Text(pomodoroManager.timeString)
@@ -397,7 +595,7 @@ struct IslandView: View {
             Spacer() // center 230px = physical notch, stays black
 
             // Right wing: cat count
-            if storeManager.isUnlocked {
+            if storeManager.isUnlocked || pomodoroManager.completedToday < 3 {
                 HStack(spacing: 3) {
                     CatIconView(emoji: streakManager.catEmoji, size: 20)
                     Text("\(pomodoroManager.completedToday)")
@@ -427,7 +625,9 @@ struct IslandView: View {
                         ForEach([(label: "FLOW", type: PomodoroSessionType.work),
                                  (label: "BREAK", type: PomodoroSessionType.breakTime)], id: \.label) { item in
                             Button(action: {
-                                if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming { return }
+                                // Also guard paused sessions — switching modes resets and
+                                // would silently destroy the resumable session.
+                                if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming || pomodoroManager.hasActiveWorkSession { return }
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     displayMode = item.type
                                     pomodoroManager.sessionType = item.type
@@ -467,9 +667,37 @@ struct IslandView: View {
 
                 Spacer()
 
-                // Right wing: play/pause + settings
+                // Right wing: [finish] play/pause + settings — finish sits LEFT of
+                // play/pause so the play button never changes position when the
+                // finish button appears/disappears.
                 HStack(spacing: 16) {
-                    Button(action: { 
+                    // Finish control: hold-to-finish safety — the cat fills up
+                    // clockwise like a clock while holding; completing the fill
+                    // ends the session (logs elapsed as completed, starts break).
+                    if pomodoroManager.hasActiveWorkSession && !pomodoroManager.isPausedConfirming {
+                        ZStack {
+                            CatIconView(emoji: streakManager.catEmoji, size: 20)
+                                .saturation(0)
+                                .opacity(0.3)
+                            CatIconView(emoji: streakManager.catEmoji, size: 20)
+                                .mask(PieProgressShape(progress: finishHoldProgress))
+                        }
+                        .contentShape(Rectangle())
+                        .onLongPressGesture(minimumDuration: 1.2, perform: {
+                            finishHoldProgress = 0
+                            pomodoroManager.currentTask = pomodoroManager.currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
+                            pomodoroManager.skip() // work session → completeSession(): logs elapsed, starts break
+                        }, onPressingChanged: { pressing in
+                            if pressing {
+                                withAnimation(.linear(duration: 1.2)) { finishHoldProgress = 1 }
+                            } else {
+                                withAnimation(.easeOut(duration: 0.2)) { finishHoldProgress = 0 }
+                            }
+                        })
+                        .help("Hold to finish flow & start break")
+                    }
+
+                    Button(action: {
                         DispatchQueue.main.async {
                             NSApp.keyWindow?.makeFirstResponder(nil)
                         }
@@ -526,15 +754,23 @@ struct IslandView: View {
             // ── BODY ─────────────────────────────────────────────────────────
             if displayMode == .work {
                 VStack(spacing: 0) {
-                    // Duration dial (hidden while running or confirming)
-                    if (!pomodoroManager.isRunning && !pomodoroManager.isPausedConfirming) || pomodoroManager.sessionType != .work {
+                    // Duration dial (hidden while a session is running, paused, or confirming)
+                    if (!pomodoroManager.isRunning && !pomodoroManager.isPausedConfirming && !pomodoroManager.hasActiveWorkSession) || pomodoroManager.sessionType != .work {
                         HorizontalDialView(
                             value: Binding(
-                                get: { pomodoroManager.workDuration / 60 },
-                                set: { pomodoroManager.workDuration = $0 * 60 }
+                                get: { pomodoroManager.isInfiniteFlow ? 0 : pomodoroManager.workDuration / 60 },
+                                set: { newVal in
+                                    if newVal == 0 {
+                                        pomodoroManager.isInfiniteFlow = true
+                                    } else {
+                                        pomodoroManager.isInfiniteFlow = false
+                                        pomodoroManager.workDuration = newVal * 60
+                                    }
+                                }
                             ),
                             range: 5...120,
-                            title: "Flow minutes"
+                            title: "Flow minutes",
+                            infinityValue: 0
                         )
                         .frame(width: 420, height: 72)
                         .id("work-dial")
@@ -595,10 +831,10 @@ struct IslandView: View {
                             .padding(.vertical, 10)
                             .frame(width: 420)
                             .transition(.opacity)
-                        } else if pomodoroManager.isRunning && pomodoroManager.sessionType == .work && !pomodoroManager.currentTask.isEmpty {
+                        } else if (pomodoroManager.isRunning || pomodoroManager.hasActiveWorkSession) && pomodoroManager.sessionType == .work && !pomodoroManager.currentTask.isEmpty {
                             // Active status label — editable 3-line layout when task is set
                             VStack(spacing: 2) {
-                                Text("FOCUSING")
+                                Text(pomodoroManager.isRunning ? "FOCUSING" : "PAUSED")
                                     .font(.system(size: 9, weight: .bold, design: .rounded))
                                     .foregroundColor(.orange)
                                     .tracking(1.5)
@@ -752,10 +988,7 @@ struct IslandView: View {
 
                     // Task chips — hidden while a session is actively running (current task shown above)
                     let isActiveSession = pomodoroManager.isRunning && pomodoroManager.sessionType == .work && !pomodoroManager.currentTask.isEmpty
-                    // Today's history titles first (quick re-run), then remaining fetched todos
-                    let chipTasks: [String] = {
-                        return Array(pomodoroManager.recentTasks.prefix(8))
-                    }()
+                    let chipTasks = self.chipTasks
                     if !chipTasks.isEmpty && !isActiveSession {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -884,12 +1117,12 @@ struct IslandView: View {
                         )
                         .frame(width: 420, height: 72)
                         .id("break-dial")
-                        .padding(.top, 10)
+                        .padding(.top, 6)
                         .padding(.bottom, 0)
                         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
                     }
 
-                    // Break Intention Box
+                    // Break Intention Box — same metrics as the flow task box (12/8, r10, w420)
                     HStack(spacing: 12) {
                         Image(systemName: "cup.and.saucer.fill")
                             .font(.system(size: 10))
@@ -898,14 +1131,14 @@ struct IslandView: View {
                         Text(pomodoroManager.isRunning && pomodoroManager.sessionType == .breakTime ? "Taking a breather…" : "Ready for a break?")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundColor(.white.opacity(0.9))
-                        
+
                         Image(systemName: "cup.and.saucer.fill")
                             .font(.system(size: 10))
                             .foregroundColor(.orange.opacity(0.6))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                     .background(Color.white.opacity(0.05))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(
@@ -934,26 +1167,24 @@ struct IslandView: View {
                                 }
                             } label: {
                                 Text(activity)
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundColor(isSelected ? .orange : .white.opacity(0.4))
-                                    .padding(.horizontal, 10)
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .foregroundColor(isSelected ? .orange : .white.opacity(0.55))
+                                    .padding(.horizontal, 12)
                                     .padding(.vertical, 5)
-                                    .background(isSelected ? Color.orange.opacity(0.15) : Color.white.opacity(0.04))
+                                    .background(isSelected ? Color.orange.opacity(0.15) : Color.white.opacity(0.06))
                                     .clipShape(Capsule())
                                     .overlay(
                                         Capsule()
-                                            .stroke(isSelected ? Color.orange.opacity(0.5) : Color.clear, lineWidth: 1)
+                                            .stroke(isSelected ? Color.orange.opacity(0.5) : Color.white.opacity(0.05), lineWidth: 1)
                                     )
                             }
                             .buttonStyle(PlainButtonStyle())
                             .help(pomodoroManager.isRunning ? "Tag this break as: \(activity)" : "Start break: \(activity)")
                         }
                     }
-                    .padding(.top, 12)
-
-                    Spacer(minLength: 0)
+                    .padding(.top, 8)
                 }
-                .frame(maxHeight: .infinity)
+                .padding(.bottom, 2)
             }
 
             // ── BOTTOM: cats + streak ─────────────────────────────────────────
@@ -1000,6 +1231,10 @@ struct SettingsQuickSetupView: View {
     @State private var isPairingPin: Bool = false
     @State private var pinError: String? = nil
     @State private var showAdvancedSettings: Bool = false
+    @State private var dndSetupStatus: String? = nil
+    @State private var installedShortcuts: [String] = []
+    @AppStorage("pomodoro.dndOnShortcut") private var dndOnShortcut: String = ""
+    @AppStorage("pomodoro.dndOffShortcut") private var dndOffShortcut: String = ""
     
     var body: some View {
         VStack(spacing: 0) {
@@ -1290,6 +1525,10 @@ struct SettingsQuickSetupView: View {
 
                     Divider().background(Color.white.opacity(0.1))
 
+                    ShortcutsSettingsSection()
+
+                    Divider().background(Color.white.opacity(0.1))
+
                     // Advanced Settings Collapsible Button
                     Button(action: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -1405,15 +1644,15 @@ struct SettingsQuickSetupView: View {
     
     private var advancedSettingsContent: some View {
         VStack(spacing: 16) {
-            coreTogglesSection
+            calendarSourceSection
+            Divider().background(Color.white.opacity(0.1))
+            todoSourceSection
             Divider().background(Color.white.opacity(0.1))
             proRhythmSection
             Divider().background(Color.white.opacity(0.1))
             alarmSection
             Divider().background(Color.white.opacity(0.1))
-            calendarSourceSection
-            Divider().background(Color.white.opacity(0.1))
-            todoSourceSection
+            coreTogglesSection
             Divider().background(Color.white.opacity(0.1))
             compactClockSection
         }
@@ -1427,17 +1666,71 @@ struct SettingsQuickSetupView: View {
             Toggle("Auto-Start Work", isOn: $pomodoroManager.autoStartWork)
             Toggle("Auto-Start Break", isOn: $pomodoroManager.autoStartBreak)
             Toggle("DND Auto-Toggle", isOn: $pomodoroManager.dndAutoToggle)
+                .onChange(of: pomodoroManager.dndAutoToggle) { _, enabled in
+                    if enabled {
+                        dndSetupStatus = "Checking setup…"
+                        NotificationManager.shared.verifyDNDSetup(openSettingsIfNeeded: true) { status in
+                            dndSetupStatus = status.message
+                        }
+                    } else {
+                        dndSetupStatus = nil
+                    }
+                }
             if pomodoroManager.dndAutoToggle {
-                Text("💡 Requires Accessibility permission or a Shortcut named 'Turn Do Not Disturb On' / 'Nicht stören ein'")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundColor(.orange.opacity(0.8))
-                    .padding(.leading, 18)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(dndSetupStatus ?? "💡 Uses a 'DND On'/'DND Off' Shortcut, or Control Center via Accessibility")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.orange.opacity(0.8))
+
+                    // Explicit shortcut selection — pick simple, non-interactive
+                    // Shortcuts here to avoid any popup on session start/end.
+                    dndShortcutPicker(label: "On:", selection: $dndOnShortcut)
+                    dndShortcutPicker(label: "Off:", selection: $dndOffShortcut)
+                }
+                .padding(.leading, 18)
+                .onAppear {
+                    NotificationManager.shared.fetchInstalledShortcuts { installedShortcuts = $0 }
+                    // Re-check silently (no Settings jump) when the section reopens
+                    if dndSetupStatus == nil {
+                        NotificationManager.shared.verifyDNDSetup(openSettingsIfNeeded: false) { status in
+                            dndSetupStatus = status.message
+                        }
+                    }
+                }
             }
             Toggle("Launch at Login", isOn: $launchManager.isEnabled)
             Toggle("Break Timer Overlay", isOn: $pomodoroManager.showBreakTimerOverlay)
         }
         .font(.system(size: 10, weight: .bold))
         .toggleStyle(OrangeToggleStyle())
+    }
+
+    private func dndShortcutPicker(label: String, selection: Binding<String>) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white.opacity(0.6))
+                .frame(width: 24, alignment: .leading)
+            Picker("", selection: selection) {
+                Text("Automatic").tag("")
+                // Keep a stored-but-uninstalled name selectable so the picker doesn't break
+                if !selection.wrappedValue.isEmpty && !installedShortcuts.contains(selection.wrappedValue) {
+                    Text(selection.wrappedValue).tag(selection.wrappedValue)
+                }
+                ForEach(installedShortcuts, id: \.self) { name in
+                    Text(name).tag(name)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(MenuPickerStyle())
+            .controlSize(.small)
+            .onChange(of: selection.wrappedValue) { _, _ in
+                // Re-verify with the newly chosen shortcut
+                NotificationManager.shared.verifyDNDSetup(openSettingsIfNeeded: false) { status in
+                    dndSetupStatus = status.message
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -1527,21 +1820,51 @@ struct SettingsQuickSetupView: View {
             }
             
             if pomodoroManager.calendarSource == "mac" {
-                HStack {
+                HStack(alignment: .top) {
                     if calendarManager.availableCalendars.isEmpty {
                         Text("No calendars found or access denied.")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.5))
                     } else {
-                        Picker("", selection: $pomodoroManager.targetCalendarID) {
-                            Text("Default Calendar").tag("")
-                            ForEach(calendarManager.availableCalendars, id: \.calendarIdentifier) { calendar in
-                                Text(calendar.title).tag(calendar.calendarIdentifier)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Sessions:")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .frame(width: 50, alignment: .leading)
+                                Picker("", selection: $pomodoroManager.targetCalendarID) {
+                                    Text("Default Calendar").tag("")
+                                    ForEach(calendarManager.availableCalendars, id: \.calendarIdentifier) { calendar in
+                                        Text(calendar.title).tag(calendar.calendarIdentifier)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .font(.system(size: 10))
+                            }
+                            HStack {
+                                Text("Breaks:")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .frame(width: 50, alignment: .leading)
+                                Picker("", selection: $pomodoroManager.breakTargetCalendarID) {
+                                    Text("Same as Sessions").tag("")
+                                    ForEach(calendarManager.availableCalendars, id: \.calendarIdentifier) { calendar in
+                                        Text(calendar.title).tag(calendar.calendarIdentifier)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .font(.system(size: 10))
+                                .disabled(!storeManager.isUnlocked)
+                                if !storeManager.isUnlocked {
+                                    Text("PRO")
+                                        .font(.system(size: 8, weight: .black))
+                                        .foregroundColor(.orange)
+                                        .padding(.leading, 2)
+                                }
                             }
                         }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .font(.system(size: 10))
                     }
                     Spacer()
                     Button("↻ Refresh") {
@@ -1552,17 +1875,47 @@ struct SettingsQuickSetupView: View {
                     .foregroundColor(.blue)
                 }
             } else {
-                HStack {
+                HStack(alignment: .top) {
                     if !jarviManager.availableCalendars.isEmpty {
-                        Picker("", selection: $pomodoroManager.targetCalendarID) {
-                            Text("Primary Google Calendar").tag("")
-                            ForEach(jarviManager.availableCalendars, id: \.id) { cal in
-                                Text(cal.title).tag(cal.id)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Sessions:")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .frame(width: 50, alignment: .leading)
+                                Picker("", selection: $pomodoroManager.targetCalendarID) {
+                                    Text("Primary Google Calendar").tag("")
+                                    ForEach(jarviManager.availableCalendars, id: \.id) { cal in
+                                        Text(cal.title).tag(cal.id)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .font(.system(size: 10))
+                            }
+                            HStack {
+                                Text("Breaks:")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .frame(width: 50, alignment: .leading)
+                                Picker("", selection: $pomodoroManager.breakTargetCalendarID) {
+                                    Text("Same as Sessions").tag("")
+                                    ForEach(jarviManager.availableCalendars, id: \.id) { cal in
+                                        Text(cal.title).tag(cal.id)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .font(.system(size: 10))
+                                .disabled(!storeManager.isUnlocked)
+                                if !storeManager.isUnlocked {
+                                    Text("PRO")
+                                        .font(.system(size: 8, weight: .black))
+                                        .foregroundColor(.orange)
+                                        .padding(.leading, 2)
+                                }
                             }
                         }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .font(.system(size: 10))
                     } else if jarviManager.isLinked {
                         Text("No Google calendars found or still loading...")
                             .font(.system(size: 10))
@@ -1690,18 +2043,34 @@ struct SettingsQuickSetupView: View {
 
     @ViewBuilder
     private var compactClockSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("COMPACT CLOCK")
                 .font(.system(size: 9, weight: .black))
                 .foregroundColor(.white.opacity(0.4))
             
-            Picker("", selection: $pomodoroManager.compactClockMode) {
-                Text("Countdown").tag("countdown")
-                Text("Preset").tag("preset")
-                Text("Wall Clock").tag("clock")
+            HStack(spacing: 0) {
+                ForEach([
+                    ("Countdown", "countdown"),
+                    ("Preset", "preset"),
+                    ("Wall Clock", "clock")
+                ], id: \.1) { label, tag in
+                    Button(action: {
+                        pomodoroManager.compactClockMode = tag
+                    }) {
+                        Text(label)
+                            .font(.system(size: 11, weight: pomodoroManager.compactClockMode == tag ? .semibold : .medium))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 22)
+                            .background(pomodoroManager.compactClockMode == tag ? Color.orange : Color.clear)
+                            .foregroundColor(pomodoroManager.compactClockMode == tag ? .black : .white.opacity(0.85))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(2)
+            .background(Color.white.opacity(0.1))
+            .cornerRadius(7)
         }
     }
 }
@@ -1755,6 +2124,32 @@ struct NotchShape: Shape {
     }
 }
 
+/// A pie/clock-wipe sector starting at 12 o'clock, sweeping clockwise.
+/// Used as an animatable mask for hold-to-confirm fills.
+struct PieProgressShape: Shape {
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        guard progress > 0 else { return p }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = max(rect.width, rect.height) // large enough to cover the rect
+        p.move(to: center)
+        p.addArc(center: center,
+                 radius: radius,
+                 startAngle: .degrees(-90),
+                 endAngle: .degrees(-90 + 360 * progress),
+                 clockwise: false)
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct PaywallExpandedView: View {
     @ObservedObject var storeManager: StoreManager
 
@@ -1778,19 +2173,65 @@ struct PaywallExpandedView: View {
             // Purchases must anchor to a real key window (macOS 15.2+ StoreKit
             // requirement) — PurchaseCoordinator handles that; these buttons stay
             // in the island's own style.
-            HStack(spacing: 16) {
-                if let lifetime = storeManager.lifetimeProduct {
-                    PaywallProductButton(title: "Lifetime", price: lifetime.displayPrice, tint: .orange) {
-                        PurchaseCoordinator.shared.purchase(lifetime)
+            Group {
+                if storeManager.lifetimeProduct != nil || storeManager.monthlyProduct != nil {
+                    HStack(spacing: 16) {
+                        if let lifetime = storeManager.lifetimeProduct {
+                            PaywallProductButton(title: "Lifetime", price: lifetime.displayPrice, tint: .orange) {
+                                PurchaseCoordinator.shared.purchase(lifetime)
+                            }
+                        }
+                        if let monthly = storeManager.monthlyProduct {
+                            PaywallProductButton(title: "Monthly", price: monthly.displayPrice, tint: .blue) {
+                                PurchaseCoordinator.shared.purchase(monthly)
+                            }
+                        }
                     }
-                }
-                if let monthly = storeManager.monthlyProduct {
-                    PaywallProductButton(title: "Monthly", price: monthly.displayPrice, tint: .blue) {
-                        PurchaseCoordinator.shared.purchase(monthly)
+                } else if storeManager.productLoadState == .failed {
+                    VStack(spacing: 8) {
+                        Text("Couldn't load purchase options.")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                        if let detail = storeManager.lastLoadError {
+                            Text(detail)
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(.white.opacity(0.45))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        Button {
+                            Task { await storeManager.fetchProducts() }
+                        } label: {
+                            Text("Try Again")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 24)
+                                .background(Color.orange.opacity(0.35))
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.7), lineWidth: 1))
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.orange)
+                        Text("Loading purchase options…")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .frame(height: 44)
                 }
             }
             .padding(.top, 4)
+            .task {
+                // Re-attempt whenever the paywall is shown and products are missing
+                if storeManager.lifetimeProduct == nil && storeManager.monthlyProduct == nil {
+                    await storeManager.fetchProducts()
+                }
+            }
 
             Button("Restore Purchases") {
                 Task { await storeManager.restorePurchases() }

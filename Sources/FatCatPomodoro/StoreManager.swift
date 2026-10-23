@@ -6,9 +6,17 @@ import AppKit
 class StoreManager: ObservableObject {
     static let shared = StoreManager()
 
+    enum ProductLoadState {
+        case loading
+        case loaded
+        case failed
+    }
+
     @Published private(set) var lifetimeProduct: Product?
     @Published private(set) var monthlyProduct: Product?
     @Published private(set) var hasActiveEntitlement: Bool = false
+    @Published private(set) var productLoadState: ProductLoadState = .loading
+    @Published private(set) var lastLoadError: String? = nil
     
     var isUnlocked: Bool {
         hasActiveEntitlement
@@ -26,6 +34,15 @@ class StoreManager: ObservableObject {
         Task {
             await fetchProducts()
             await updateEntitlements()
+            // The App Review sandbox (and flaky networks) can fail the first
+            // fetch — keep retrying with backoff so the paywall never ends up
+            // permanently empty.
+            var attempt = 0
+            while productLoadState == .failed && attempt < 5 {
+                attempt += 1
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000)
+                await fetchProducts()
+            }
         }
     }
 
@@ -34,8 +51,10 @@ class StoreManager: ObservableObject {
     }
 
     func fetchProducts() async {
+        productLoadState = .loading
         do {
             let products = try await Product.products(for: [lifetimeProductId, monthlyProductId])
+            print("StoreManager: fetched \(products.count) products: \(products.map(\.id))")
             for product in products {
                 switch product.id {
                 case lifetimeProductId:
@@ -46,8 +65,19 @@ class StoreManager: ObservableObject {
                     break
                 }
             }
+            // StoreKit can return an empty array transiently — treat as failure
+            // so the paywall shows a retry instead of a blank space.
+            if lifetimeProduct != nil || monthlyProduct != nil {
+                productLoadState = .loaded
+                lastLoadError = nil
+            } else {
+                productLoadState = .failed
+                lastLoadError = "Store returned no products"
+            }
         } catch {
             print("Failed to fetch products: \(error)")
+            productLoadState = .failed
+            lastLoadError = error.localizedDescription
         }
     }
 

@@ -67,14 +67,25 @@ The app acts as a real-time focus telemetry dispatcher, fully supporting the off
 *   Features a sleek, dynamically scaling **Last 7 Days Bar Chart** showing completed focus minutes, alongside today's chronological focus logs.
 *   Includes a **Desktop CSV Export** utility to let users own and analyze their focus history in external apps.
 
-### 9️⃣ System-Wide Hotkeys
-*   Carbon-backed global keybinds operate system-wide even when another app is full-screen:
-    *   `Cmd + Shift + L` $\rightarrow$ Expand/Collapse the notch.
-    *   `Cmd + Shift + S` $\rightarrow$ Play/Pause the focus timer.
+### 9️⃣ System-Wide Hotkeys & Full Keyboard Control
+*   Carbon-backed global keybinds operate system-wide even when another app is full-screen. All three are **user-customizable** via the recorder in Settings → Keyboard Shortcuts (conflicts are auto-resolved — assigning a combo steals it from the other action):
+    *   `Cmd + Shift + P` → Open/Close the island (activates it and focuses the title field).
+    *   `Cmd + Shift + S` → Start/Pause the focus timer.
+    *   `Cmd + Shift + B` → Start a break (finishes & logs a running flow first).
+*   Once the island is open, the whole flow is keyboard-driven (`⌘⇧P → "45" → "deep work" → ↩`):
+    *   Type `0–9` → set the timer minutes directly (`0` = ∞ flow); digits typed after a title character go into the title instead.
+    *   Type letters → session title; `↩` → start.
+    *   `↑/↓` → nudge the timer in snapped 5-minute steps (below 5 → ∞, mirroring the dial).
+    *   `⌘1/⌘2/⌘3` → duration presets (flow 25/45/90 min, break 5/10/15 min).
+    *   `⇥ / ⇧⇥` → cycle through today's task chips.
+    *   `⇧←/⇧→` → switch Flow ↔ Break · `⌘,` → settings · `⎋` → close.
 
 ---
 
 ## 🛠️ Architecture & Tech Stack
+
+> **Developer documentation:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — subsystem map, session state machine, window techniques, and the *why* behind every library/API choice (Carbon hotkeys, non-activating NSPanel, EventKit delegation, StoreKit 2 anchoring, …). [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — dev loop, release pipelines (DMG + Mac App Store), how-to recipes, conventions, and the gotcha index. Start there before changing code.
+
 *   **Platform:** macOS 14.0+ (SwiftUI, AppKit, Carbon, EventKit, AVFoundation, Security)
 *   **IDE Support:** Fully configured Swift Package Manager structure (`Package.swift`).
 *   **Keychain Storage:** Employs native `SecItem` encryption wrappers to store paired Jarvi JWT tokens securely within the system's keychain services.
@@ -107,7 +118,7 @@ This runs `xcodebuild archive` (Release, Developer ID signing) → `xcodebuild -
 
 ```bash
 # Provide credentials via env vars (never commit these):
-export APPLE_ID="you@example.com"
+export APPLE_ID="asifthatworks@gmail.com"
 export APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
 
 ./scripts/notarize.sh

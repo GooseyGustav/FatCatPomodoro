@@ -16,9 +16,11 @@ struct IslandApp: App {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var window: IslandWindow?
+    var statusItem: NSStatusItem?
     var fullScreenWindow: NSWindow?
+    var breakBorderWindow: NSWindow?
     var skipButtonWindow: NSWindow?
     var breakTimerWindow: NSWindow?
     var alertWindow: NSWindow?
@@ -39,7 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = iconImage
         }
 
-        let contentView = IslandView(pomodoroManager: pomodoroManager, isNotchedDisplay: isNotchedDisplay)
+        let contentView = IslandView(pomodoroManager: pomodoroManager)
         window = IslandWindow(contentView: AnyView(contentView))
 
         positionWindow()
@@ -49,6 +51,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupAlertObserver()
         setupScreenChangeObserver()
         setupHotkeys()
+        setupStatusItem()
+    }
+
+    // MARK: - Menu bar extra (App Review Guideline 4: accessory apps need a menu bar presence)
+
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            let image = NSImage(systemSymbolName: "cat.fill", accessibilityDescription: "FatCatPomodoro")
+                ?? NSImage(systemSymbolName: "timer", accessibilityDescription: "FatCatPomodoro")
+            image?.isTemplate = true
+            button.image = image
+        }
+
+        let menu = NSMenu()
+        menu.delegate = self
+
+        let stateItem = NSMenuItem(title: "FatCatPomodoro", action: nil, keyEquivalent: "")
+        stateItem.isEnabled = false
+        menu.addItem(stateItem)
+        menu.addItem(NSMenuItem.separator())
+
+        let toggleItem = NSMenuItem(title: "Start Flow", action: #selector(menuToggleTimer), keyEquivalent: "")
+        toggleItem.target = self
+        menu.addItem(toggleItem)
+
+        let expandItem = NSMenuItem(title: "Open Island", action: #selector(menuToggleExpansion), keyEquivalent: "")
+        expandItem.target = self
+        menu.addItem(expandItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quit FatCatPomodoro", action: #selector(menuQuit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        item.menu = menu
+        statusItem = item
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu.items.count >= 3 else { return }
+        if pomodoroManager.isRunning {
+            let mode = pomodoroManager.sessionType == .work ? "Flow" : "Break"
+            menu.items[0].title = "\(mode) — \(pomodoroManager.timeString)"
+            menu.items[2].title = "Pause \(mode)"
+        } else {
+            menu.items[0].title = "FatCatPomodoro"
+            menu.items[2].title = pomodoroManager.sessionType == .breakTime ? "Start Break" : "Start Flow"
+        }
+    }
+
+    @objc private func menuToggleTimer() {
+        pomodoroManager.toggle()
+    }
+
+    @objc private func menuToggleExpansion() {
+        NotificationCenter.default.post(name: Notification.Name("ToggleIslandExpansion"), object: nil)
+    }
+
+    @objc private func menuQuit() {
+        NSApp.terminate(nil)
     }
     
     private func setupHotkeys() {
@@ -59,7 +123,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         HotkeyManager.shared.onToggleExpansion = {
             DispatchQueue.main.async {
-                NotificationCenter.default.post(name: Notification.Name("ToggleIslandExpansion"), object: nil)
+                // viaHotkey → the island activates the app and focuses the title
+                // field so the user can type a session name immediately.
+                NotificationCenter.default.post(name: Notification.Name("ToggleIslandExpansion"), object: nil, userInfo: ["viaHotkey": true])
+            }
+        }
+        HotkeyManager.shared.onStartBreak = { [weak self] in
+            DispatchQueue.main.async {
+                guard let pm = self?.pomodoroManager else { return }
+                if pm.sessionType == .work && (pm.isRunning || pm.hasActiveWorkSession) {
+                    pm.skip() // finish the flow (logs elapsed) and roll into break
+                } else if !(pm.isRunning && pm.sessionType == .breakTime) {
+                    pm.startBreakWithActivity(pm.breakActivity)
+                }
             }
         }
         HotkeyManager.shared.setup()
@@ -74,20 +150,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return builtIn ?? NSScreen.main ?? NSScreen.screens[0]
     }
     
-    var isNotchedDisplay: Bool {
-        // A simple heuristic: most recent MacBook Pros have safe areas that imply a notch.
-        // We can check the safeAreaInsets of the notchScreen.
-        let screen = notchScreen
-        return screen.safeAreaInsets.top > 0
-    }
-
     private func positionWindow() {
         let screen = notchScreen
         let r = screen.frame
         let w: CGFloat = 600
         let h: CGFloat = 420
-        let yOffset: CGFloat = isNotchedDisplay ? 0 : -10 // Float slightly below top edge if no notch
-        window?.setFrame(NSRect(x: r.midX - w / 2, y: r.maxY - h + yOffset, width: w, height: h), display: true)
+        // Flush against the top edge on every display — the island hangs off the
+        // screen edge like the physical notch, even on external monitors.
+        window?.setFrame(NSRect(x: r.midX - w / 2, y: r.maxY - h, width: w, height: h), display: true)
     }
 
     private func setupScreenChangeObserver() {
@@ -95,7 +165,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.positionWindow() }
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.positionWindow()
+            if let borderWin = self.breakBorderWindow {
+                borderWin.setFrame(self.notchScreen.frame, display: true)
+            }
+        }
     }
 
     private func setupAlertObserver() {
@@ -179,25 +255,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateFullScreenVideo(show: Bool) {
         if show {
-            if fullScreenWindow == nil {
-                let screen = notchScreen
+            let screen = notchScreen
 
-                // Cat video — full screen, click-through, transparent background
-                let catWin = NSWindow(
+            // 1. Break Border Window — 1-2 cm screen border highlight during dragging
+            if breakBorderWindow == nil {
+                let borderWin = NSWindow(
                     contentRect: screen.frame,
                     styleMask: [.borderless, .fullSizeContentView],
                     backing: .buffered,
                     defer: false
                 )
-                catWin.level = .mainMenu - 1
-                catWin.backgroundColor = .clear
-                catWin.isOpaque = false
-                catWin.hasShadow = false
-                catWin.ignoresMouseEvents = true
-                catWin.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-                // Use ProRes original (cleancat.mov, gitignored) if available — has alpha channel.
-                // Falls back to cleancat.mp4 (committed to git) when the large source isn't present.
-                // Must check the SwiftPM sub-bundle (FatCatPomodoro_FatCatPomodoro) where resources live.
+                borderWin.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 2)
+                borderWin.backgroundColor = .clear
+                borderWin.isOpaque = false
+                borderWin.hasShadow = false
+                borderWin.ignoresMouseEvents = true
+                borderWin.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                borderWin.contentView = NSHostingView(
+                    rootView: BreakBorderOverlayView(coordinator: BreakCatDragCoordinator.shared)
+                )
+                self.breakBorderWindow = borderWin
+            }
+            breakBorderWindow?.orderFrontRegardless()
+
+            // 2. Interactive Draggable Cat Window — remembered position, size, & exit drag
+            if fullScreenWindow == nil {
+                let savedScale = UserDefaults.standard.double(forKey: "pomodoro.breakCatScale_v1")
+                let scale = savedScale > 0 ? min(2.2, max(0.45, savedScale)) : 1.0
+                let baseW: CGFloat = 560
+                let baseH: CGFloat = 315
+                let catW = baseW * scale
+                let catH = baseH * scale
+
+                let defaultX = screen.frame.midX - catW / 2
+                let defaultY = screen.frame.midY - catH / 2
+                let savedX = UserDefaults.standard.double(forKey: "pomodoro.breakCatX_v1")
+                let savedY = UserDefaults.standard.double(forKey: "pomodoro.breakCatY_v1")
+
+                var startX = savedX != 0 ? savedX : defaultX
+                var startY = savedY != 0 ? savedY : defaultY
+
+                // Safety validation: ensure the cat is on-screen
+                if startX + catW < screen.frame.minX + 50 || startX > screen.frame.maxX - 50 {
+                    startX = defaultX
+                }
+                if startY + catH < screen.frame.minY + 50 || startY > screen.frame.maxY - 50 {
+                    startY = defaultY
+                }
+
                 let swiftPMBundle: Bundle? = {
                     if let url = Bundle.main.url(forResource: "FatCatPomodoro_FatCatPomodoro", withExtension: "bundle") {
                         return Bundle(url: url)
@@ -208,8 +313,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     || Bundle(for: AppDelegate.self).path(forResource: "cleancat_safari", ofType: "mov") != nil
                     || swiftPMBundle?.path(forResource: "cleancat_safari", ofType: "mov") != nil
                 let (vidName, vidType) = hasProRes ? ("cleancat_safari", "mov") : ("cleancat", "mp4")
+
+                let catWin = DraggableCatWindow(
+                    contentRect: NSRect(x: startX, y: startY, width: catW, height: catH),
+                    styleMask: [.borderless, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
+                catWin.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
+                catWin.backgroundColor = .clear
+                catWin.isOpaque = false
+                catWin.hasShadow = false
+                catWin.ignoresMouseEvents = false
+                catWin.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
                 catWin.contentView = NSHostingView(
-                    rootView: LoopingVideoPlayer(videoName: vidName, videoType: vidType).ignoresSafeArea()
+                    rootView: BreakCatOverlayView(
+                        pomodoroManager: pomodoroManager,
+                        window: catWin,
+                        videoName: vidName,
+                        videoType: vidType,
+                        initialScale: scale
+                    )
                 )
                 self.fullScreenWindow = catWin
 
@@ -237,9 +361,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             skipButtonWindow?.orderFrontRegardless()
             syncBreakTimerOverlay()
         } else {
-            fullScreenWindow?.orderOut(nil);  fullScreenWindow = nil
-            skipButtonWindow?.orderOut(nil);  skipButtonWindow = nil
-            breakTimerWindow?.orderOut(nil);  breakTimerWindow = nil
+            fullScreenWindow?.orderOut(nil);   fullScreenWindow = nil
+            breakBorderWindow?.orderOut(nil);  breakBorderWindow = nil
+            skipButtonWindow?.orderOut(nil);   skipButtonWindow = nil
+            breakTimerWindow?.orderOut(nil);   breakTimerWindow = nil
+            BreakCatDragCoordinator.shared.update(isDragging: false, isExitZone: false)
         }
     }
 
@@ -510,12 +636,90 @@ struct BreakSkipButton: View {
     }
 }
 
+/// Catches scroll events over the break-overlay window and turns them into
+/// zoom deltas (two-finger scroll on trackpad, wheel on a mouse). The view is
+/// hit-test transparent; the whole window is the overlay, so window-scoped
+/// interception is safe.
+private struct ScrollZoomCatcher: NSViewRepresentable {
+    let onZoom: (Double) -> Void
+
+    func makeNSView(context: Context) -> ZoomView {
+        let view = ZoomView()
+        view.onZoom = onZoom
+        return view
+    }
+
+    func updateNSView(_ nsView: ZoomView, context: Context) {
+        nsView.onZoom = onZoom
+    }
+
+    final class ZoomView: NSView {
+        var onZoom: ((Double) -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                guard monitor == nil else { return }
+                monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+                    guard let self, event.window === self.window else { return event }
+                    let delta = event.scrollingDeltaY
+                    guard delta != 0 else { return event }
+                    // Trackpad: smooth proportional zoom; mouse wheel: 0.1 per notch. Scroll up → bigger.
+                    let step = event.hasPreciseScrollingDeltas ? delta * 0.004 : (delta > 0 ? 0.1 : -0.1)
+                    self.onZoom?(step)
+                    return nil
+                }
+            } else if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
 struct BreakTimerOverlay: View {
     @ObservedObject var pomodoroManager: PomodoroManager
     weak var window: NSWindow?
     @AppStorage("pomodoro.breakOverlayScale") private var scale: Double = 1.0
     @State private var isPulsing = false
     @State private var isHovering = false
+    @State private var hoveredZoomButton: String? = nil
+    @State private var pinchBaseScale: Double? = nil
+
+    private func clampScale(_ value: Double) -> Double {
+        min(1.8, max(0.65, value))
+    }
+
+    /// Generous hit area + orange hover so it reads as clickable and survives
+    /// the overlay growing/shrinking under the cursor.
+    private func zoomButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(hoveredZoomButton == symbol ? .orange : .white.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(hoveredZoomButton == symbol ? Color.orange.opacity(0.18) : Color.clear)
+                .clipShape(Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                if hovering {
+                    hoveredZoomButton = symbol
+                } else if hoveredZoomButton == symbol {
+                    hoveredZoomButton = nil
+                }
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -537,24 +741,9 @@ struct BreakTimerOverlay: View {
                             .fixedSize(horizontal: true, vertical: false)
                         
                         if isHovering {
-                            HStack(spacing: 4) {
-                                Button(action: {
-                                    scale = max(0.65, scale - 0.1)
-                                }) {
-                                    Image(systemName: "minus")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                                .buttonStyle(PlainButtonStyle())
-
-                                Button(action: {
-                                    scale = min(1.8, scale + 0.1)
-                                }) {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                            HStack(spacing: 2) {
+                                zoomButton("minus") { scale = clampScale(scale - 0.1) }
+                                zoomButton("plus") { scale = clampScale(scale + 0.1) }
                             }
                             .transition(.opacity)
                         }
@@ -613,13 +802,452 @@ struct BreakTimerOverlay: View {
             }
         }
         .gesture(
+            // Pinch in/out — anchored to the scale at gesture start so it
+            // doesn't compound per-event and run away.
             MagnificationGesture()
                 .onChanged { val in
-                    scale = min(1.8, max(0.65, scale * val))
+                    if pinchBaseScale == nil { pinchBaseScale = scale }
+                    scale = clampScale((pinchBaseScale ?? scale) * val)
                 }
+                .onEnded { _ in pinchBaseScale = nil }
+        )
+        .background(
+            // Two-finger scroll (or mouse wheel) resizes like a video player
+            ScrollZoomCatcher { delta in
+                scale = clampScale(scale + delta)
+            }
         )
         .onAppear {
             isPulsing = true
         }
     }
 }
+
+// MARK: - Break Cat Dragging & Screen Border Overlay
+
+final class BreakCatDragCoordinator: ObservableObject {
+    static let shared = BreakCatDragCoordinator()
+    
+    @Published var isDragging: Bool = false
+    @Published var isExitZone: Bool = false
+    
+    func update(isDragging: Bool, isExitZone: Bool) {
+        if self.isDragging != isDragging || self.isExitZone != isExitZone {
+            DispatchQueue.main.async {
+                self.isDragging = isDragging
+                self.isExitZone = isExitZone
+            }
+        }
+    }
+}
+
+class DraggableCatWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+}
+
+struct DraggableArea: NSViewRepresentable {
+    weak var window: NSWindow?
+    let onEndBreak: () -> Void
+    let onResetScale: () -> Void
+    
+    func makeNSView(context: Context) -> DragNSView {
+        let view = DragNSView()
+        view.targetWindow = window
+        view.onEndBreak = onEndBreak
+        view.onResetScale = onResetScale
+        return view
+    }
+    
+    func updateNSView(_ nsView: DragNSView, context: Context) {
+        nsView.targetWindow = window
+        nsView.onEndBreak = onEndBreak
+        nsView.onResetScale = onResetScale
+    }
+}
+
+class DragNSView: NSView {
+    weak var targetWindow: NSWindow?
+    var onEndBreak: (() -> Void)?
+    var onResetScale: (() -> Void)?
+    
+    private var dragStartMouseLocation: NSPoint?
+    private var dragStartWindowOrigin: NSPoint?
+    private var isDragging = false
+    private var isMouseInside = false
+    private var trackingArea: NSTrackingArea?
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea { removeTrackingArea(existing) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        if !isDragging && !isMouseInside {
+            isMouseInside = true
+            NSCursor.openHand.push()
+        }
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        if isMouseInside && !isDragging {
+            isMouseInside = false
+            NSCursor.pop()
+        }
+    }
+    
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            onResetScale?()
+            return
+        }
+        dragStartMouseLocation = NSEvent.mouseLocation
+        dragStartWindowOrigin = targetWindow?.frame.origin ?? window?.frame.origin
+        isDragging = true
+        NSCursor.closedHand.push()
+        BreakCatDragCoordinator.shared.update(isDragging: true, isExitZone: false)
+    }
+    
+    override func mouseDragged(with event: NSEvent) {
+        guard isDragging,
+              let startMouse = dragStartMouseLocation,
+              let startOrigin = dragStartWindowOrigin,
+              let win = targetWindow ?? window else { return }
+        
+        let currentMouse = NSEvent.mouseLocation
+        let dx = currentMouse.x - startMouse.x
+        let dy = currentMouse.y - startMouse.y
+        
+        let newOrigin = NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy)
+        win.setFrameOrigin(newOrigin)
+        
+        let activeScreen = NSScreen.screens.first { NSMouseInRect(currentMouse, $0.frame, false) }
+            ?? win.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        let sFrame = activeScreen.frame
+        
+        // 1-2 cm border threshold (approx 52 points, ~1.8 cm)
+        let borderThreshold: CGFloat = 52.0
+        
+        let mouseInBorder = currentMouse.x < sFrame.minX + borderThreshold ||
+                            currentMouse.x > sFrame.maxX - borderThreshold ||
+                            currentMouse.y < sFrame.minY + borderThreshold ||
+                            currentMouse.y > sFrame.maxY - borderThreshold
+        
+        let catInBorder = win.frame.minX < sFrame.minX + borderThreshold ||
+                          win.frame.maxX > sFrame.maxX - borderThreshold ||
+                          win.frame.minY < sFrame.minY + borderThreshold ||
+                          win.frame.maxY > sFrame.maxY - borderThreshold
+        
+        let isExit = mouseInBorder || catInBorder
+        BreakCatDragCoordinator.shared.update(isDragging: true, isExitZone: isExit)
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        guard isDragging else { return }
+        isDragging = false
+        NSCursor.pop() // pop closedHand
+        if isMouseInside {
+            isMouseInside = false
+            NSCursor.pop() // pop openHand
+        }
+        
+        let inExitZone = BreakCatDragCoordinator.shared.isExitZone
+        BreakCatDragCoordinator.shared.update(isDragging: false, isExitZone: false)
+        
+        if inExitZone {
+            if let win = targetWindow ?? window {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.2
+                    context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                    win.animator().alphaValue = 0.0
+                }, completionHandler: { [weak self] in
+                    self?.onEndBreak?()
+                })
+            } else {
+                onEndBreak?()
+            }
+        } else if let win = targetWindow ?? window {
+            UserDefaults.standard.set(win.frame.origin.x, forKey: "pomodoro.breakCatX_v1")
+            UserDefaults.standard.set(win.frame.origin.y, forKey: "pomodoro.breakCatY_v1")
+        }
+        
+        dragStartMouseLocation = nil
+        dragStartWindowOrigin = nil
+    }
+}
+
+struct BreakBorderOverlayView: View {
+    @ObservedObject var coordinator: BreakCatDragCoordinator
+    @State private var pulse = false
+    
+    var body: some View {
+        GeometryReader { geo in
+            let borderThickness: CGFloat = 52.0 // ~1.8 cm
+            
+            ZStack {
+                if coordinator.isDragging {
+                    if coordinator.isExitZone {
+                        // Edge glow gradients on all 4 borders
+                        VStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.22, blue: 0.15).opacity(0.85), Color.orange.opacity(0.45), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: borderThickness)
+                            
+                            Spacer()
+                            
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.22, blue: 0.15).opacity(0.85), Color.orange.opacity(0.45), Color.clear],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                            .frame(height: borderThickness)
+                        }
+                        
+                        HStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.22, blue: 0.15).opacity(0.85), Color.orange.opacity(0.45), Color.clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: borderThickness)
+                            
+                            Spacer()
+                            
+                            LinearGradient(
+                                colors: [Color(red: 1.0, green: 0.22, blue: 0.15).opacity(0.85), Color.orange.opacity(0.45), Color.clear],
+                                startPoint: .trailing,
+                                endPoint: .leading
+                            )
+                            .frame(width: borderThickness)
+                        }
+                        
+                        // Solid energetic perimeter border
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.red, Color.orange, Color.red],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 4
+                            )
+                            .shadow(color: Color.red.opacity(0.8), radius: 16)
+                            .padding(2)
+                        
+                        // Exit Alert Badge
+                        VStack {
+                            HStack(spacing: 10) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 16, weight: .black))
+                                    .foregroundColor(.white)
+                                Text("RELEASE TO END BREAK")
+                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .tracking(1.4)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
+                            .background(
+                                Capsule()
+                                    .fill(LinearGradient(colors: [Color.red.opacity(0.95), Color.orange.opacity(0.95)], startPoint: .leading, endPoint: .trailing))
+                                    .shadow(color: Color.red.opacity(0.7), radius: 16, x: 0, y: 4)
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 1.5))
+                            )
+                            .scaleEffect(pulse ? 1.04 : 0.98)
+                            .padding(.top, borderThickness + 18)
+                            
+                            Spacer()
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    } else {
+                        // Safe dragging mode: subtle dashed guide showing where the exit border begins
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(
+                                Color.orange.opacity(0.35),
+                                style: StrokeStyle(lineWidth: 1.5, dash: [8, 6])
+                            )
+                            .padding(borderThickness)
+                        
+                        VStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "hand.draw.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.orange)
+                                Text("Drag cat to screen edge to end break")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.9))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(Color.black.opacity(0.75))
+                                    .overlay(Capsule().stroke(Color.orange.opacity(0.35), lineWidth: 1))
+                            )
+                            .padding(.top, borderThickness + 14)
+                            
+                            Spacer()
+                        }
+                        .transition(.opacity)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.2), value: coordinator.isDragging)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: coordinator.isExitZone)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+struct BreakCatOverlayView: View {
+    @ObservedObject var pomodoroManager: PomodoroManager
+    weak var window: NSWindow?
+    let videoName: String
+    let videoType: String
+    
+    @State private var scale: Double
+    @State private var isHovering = false
+    @State private var hoveredControl: String? = nil
+    @State private var pinchBaseScale: Double? = nil
+    @ObservedObject private var dragCoordinator = BreakCatDragCoordinator.shared
+    
+    init(pomodoroManager: PomodoroManager, window: NSWindow?, videoName: String, videoType: String, initialScale: Double) {
+        self.pomodoroManager = pomodoroManager
+        self.window = window
+        self.videoName = videoName
+        self.videoType = videoType
+        _scale = State(initialValue: initialScale)
+    }
+    
+    private func clampScale(_ value: Double) -> Double {
+        min(2.2, max(0.45, value))
+    }
+    
+    private func applyScale(_ newScale: Double) {
+        let clamped = clampScale(newScale)
+        scale = clamped
+        UserDefaults.standard.set(clamped, forKey: "pomodoro.breakCatScale_v1")
+        
+        guard let win = window else { return }
+        let baseW: CGFloat = 560
+        let baseH: CGFloat = 315
+        let newW = baseW * clamped
+        let newH = baseH * clamped
+        
+        let center = NSPoint(x: win.frame.midX, y: win.frame.midY)
+        let newOrigin = NSPoint(x: center.x - newW / 2, y: center.y - newH / 2)
+        win.setFrame(NSRect(origin: newOrigin, size: NSSize(width: newW, height: newH)), display: true)
+        
+        UserDefaults.standard.set(newOrigin.x, forKey: "pomodoro.breakCatX_v1")
+        UserDefaults.standard.set(newOrigin.y, forKey: "pomodoro.breakCatY_v1")
+    }
+    
+    private func recenter() {
+        guard let win = window else { return }
+        let screen = win.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        let centerX = screen.frame.midX - win.frame.width / 2
+        let centerY = screen.frame.midY - win.frame.height / 2
+        win.setFrameOrigin(NSPoint(x: centerX, y: centerY))
+        UserDefaults.standard.set(centerX, forKey: "pomodoro.breakCatX_v1")
+        UserDefaults.standard.set(centerY, forKey: "pomodoro.breakCatY_v1")
+    }
+    
+    private func controlButton(symbol: String, id: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(hoveredControl == id ? .orange : .white.opacity(0.8))
+                .frame(width: 22, height: 22)
+                .background(hoveredControl == id ? Color.orange.opacity(0.2) : Color.black.opacity(0.6))
+                .clipShape(Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help(help)
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                if hover { hoveredControl = id }
+                else if hoveredControl == id { hoveredControl = nil }
+            }
+        }
+    }
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            // Background drag receiver (handles mouse down, drag, up, double click)
+            DraggableArea(
+                window: window,
+                onEndBreak: {
+                    pomodoroManager.skip()
+                },
+                onResetScale: {
+                    applyScale(1.0)
+                }
+            )
+            
+            // Cat Video Player
+            LoopingVideoPlayer(videoName: videoName, videoType: videoType)
+                .allowsHitTesting(false)
+                .opacity(dragCoordinator.isExitZone ? 0.75 : 1.0)
+                .scaleEffect(dragCoordinator.isExitZone ? 0.94 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.75), value: dragCoordinator.isExitZone)
+            
+            // Subtle boundary feedback on hover / drag
+            if isHovering || dragCoordinator.isDragging {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        dragCoordinator.isExitZone ? Color.red.opacity(0.8) : Color.white.opacity(0.18),
+                        lineWidth: dragCoordinator.isExitZone ? 2 : 1
+                    )
+                    .allowsHitTesting(false)
+            }
+            
+            // Hover controls: Zoom Out, Zoom In, Recenter
+            if isHovering && !dragCoordinator.isDragging {
+                HStack(spacing: 5) {
+                    controlButton(symbol: "minus", id: "zoomOut", help: "Make cat smaller") {
+                        applyScale(scale - 0.1)
+                    }
+                    controlButton(symbol: "plus", id: "zoomIn", help: "Make cat bigger") {
+                        applyScale(scale + 0.1)
+                    }
+                    controlButton(symbol: "scope", id: "center", help: "Center cat on screen") {
+                        recenter()
+                    }
+                }
+                .padding(8)
+                .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+        .gesture(
+            MagnificationGesture()
+                .onChanged { val in
+                    if pinchBaseScale == nil { pinchBaseScale = scale }
+                    applyScale((pinchBaseScale ?? scale) * val)
+                }
+                .onEnded { _ in pinchBaseScale = nil }
+        )
+        .background(
+            ScrollZoomCatcher { delta in
+                applyScale(scale + delta)
+            }
+        )
+    }
+}
+

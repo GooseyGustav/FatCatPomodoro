@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import AVFoundation
 
+/// SwiftUI wrapper for the looping cat video. The clip plays through once, then loops
+/// from the 7.09s "walk-in" point so the entrance animation is only shown on first play.
+/// Rendered with a transparent backing so the alpha-channel video composites over the island.
 struct LoopingVideoPlayer: NSViewRepresentable {
     let videoName: String
     let videoType: String
@@ -15,6 +18,10 @@ struct LoopingVideoPlayer: NSViewRepresentable {
     }
 }
 
+/// NSView backed directly by an `AVPlayerLayer` configured for transparency: a clear,
+/// non-opaque layer with BGRA pixel buffers so HEVC-with-alpha / ProRes 4444 content
+/// renders with its alpha channel intact. On end-of-video it seeks back to 7.09s
+/// (the loop point after the cat's walk-in) rather than to zero.
 class LoopingVideoPlayerNSView: NSView {
     private var player: AVPlayer?
     private var observer: NSObjectProtocol?
@@ -52,6 +59,11 @@ class LoopingVideoPlayerNSView: NSView {
         }
         
         loadVideo(path: path)
+    }
+    
+    override func layout() {
+        super.layout()
+        layer?.frame = bounds
     }
     
     private func loadVideo(path: String) {

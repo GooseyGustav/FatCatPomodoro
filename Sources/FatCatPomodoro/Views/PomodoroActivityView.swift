@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Island progress strip: one dot per session toward the daily goal, switching to a
+/// compact "N ●" form once the completed count exceeds the goal to keep the width bounded.
 struct PomodoroActivityView: View {
     let completed: Int
     let goal: Int = 8 // Default goal of 8 pomodoros
