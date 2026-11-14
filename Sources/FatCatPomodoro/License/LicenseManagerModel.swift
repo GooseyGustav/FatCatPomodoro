@@ -34,10 +34,12 @@ final class LicenseManagerModel: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            let status = try await manager.activate(key: key)
+            let status = try await withRetry { try await self.manager.activate(key: key) }
             self.status = status
             self.isLicensed = status.isLicensed
             self.lastError = status.isLicensed ? nil : "Activation did not unlock FatCatPomodoro."
+        } catch let error as LicenseClientError {
+            apply(clientError: error)
         } catch {
             self.lastError = error.localizedDescription
             self.status = .invalid(error.localizedDescription)
@@ -55,6 +57,48 @@ final class LicenseManagerModel: ObservableObject {
             self.lastError = nil
         } catch {
             self.lastError = error.localizedDescription
+        }
+    }
+
+    private func apply(clientError error: LicenseClientError) {
+        switch error.statusCode {
+        case 410:
+            // Server says revoked/expired now — no grace.
+            let code = error.apiError?.error ?? ""
+            self.status = code == "expired" ? .expired : .revoked
+            self.isLicensed = false
+            self.lastError = error.localizedDescription
+        case 409:
+            self.status = .invalid(error.localizedDescription)
+            self.isLicensed = false
+            self.lastError = error.localizedDescription
+        default:
+            self.status = .invalid(error.localizedDescription)
+            self.isLicensed = false
+            self.lastError = error.localizedDescription
+        }
+    }
+
+    /// Retry transient failures (network, 429, 5xx) with short backoff.
+    /// A 410 is never retried — it is a definitive state.
+    private func withRetry<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+        var attempt = 0
+        while true {
+            do {
+                return try await operation()
+            } catch let error as LicenseClientError {
+                let transient: Bool
+                if case .transport = error { transient = true }
+                else if let status = error.statusCode { transient = [429, 500, 502, 503, 504].contains(status) }
+                else { transient = false }
+
+                if transient && attempt < 3 {
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 500_000_000)
+                    continue
+                }
+                throw error
+            }
         }
     }
 }

@@ -83,8 +83,8 @@ struct IslandView: View {
 
     private func snapshotExpandedHeight() -> CGFloat {
         if !storeManager.isUnlocked && pomodoroManager.completedToday >= 3 {
-            // Tall enough for the full paywall: products, Restore Purchases, and
-            // the 3.1.2-required subscription disclosure + Terms/Privacy links.
+            // Tall enough for the full paywall: buy-on-web button, activate/recover,
+            // and the license error state.
             return 350
         }
         if pomodoroManager.isRunning || pomodoroManager.isPausedConfirming || pomodoroManager.hasActiveWorkSession {
