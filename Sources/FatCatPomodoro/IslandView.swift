@@ -417,6 +417,28 @@ struct IslandView: View {
             return nil
         }
 
+        // Typing fallback — AppKit can silently drop the title field's first
+        // responder while other controls update (e.g. the dial reacting to
+        // digit entry). When the field isn't focused, printable keys build the
+        // title through this monitor instead of vanishing; ⌫ deletes.
+        if displayMode == .work && !taskFieldFocused
+            && (isIdle || (pomodoroManager.isRunning && pomodoroManager.currentTask.isEmpty)) {
+            if event.keyCode == 51 { // ⌫
+                if !pomodoroManager.currentTask.isEmpty {
+                    pomodoroManager.currentTask.removeLast()
+                }
+                return nil
+            }
+            if let chars = event.characters, !chars.isEmpty,
+               chars.unicodeScalars.allSatisfy({
+                   !CharacterSet.controlCharacters.contains($0)
+                       && !(0xF700...0xF8FF).contains($0.value) // function-key PUA (arrows, F-keys, Home…)
+               }) {
+                pomodoroManager.currentTask += chars
+                return nil
+            }
+        }
+
         return event
     }
 
@@ -831,157 +853,107 @@ struct IslandView: View {
                             .padding(.vertical, 10)
                             .frame(width: 420)
                             .transition(.opacity)
-                        } else if (pomodoroManager.isRunning || pomodoroManager.hasActiveWorkSession) && pomodoroManager.sessionType == .work && !pomodoroManager.currentTask.isEmpty {
-                            // Active status label — editable 3-line layout when task is set
+                        } else {
+                            // Unified task field — a single TextField shared by the idle input
+                            // and the active "FOCUSING on" layout. Keeping one view identity
+                            // means the layout flip on the first typed letter no longer
+                            // destroys the field (which used to drop keyboard focus).
+                            let isActiveLayout = (pomodoroManager.isRunning || pomodoroManager.hasActiveWorkSession) && pomodoroManager.sessionType == .work && !pomodoroManager.currentTask.isEmpty
                             VStack(spacing: 2) {
-                                Text(pomodoroManager.isRunning ? "FOCUSING" : "PAUSED")
-                                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                                    .foregroundColor(.orange)
-                                    .tracking(1.5)
-                                
-                                Text("on")
-                                    .font(.system(size: 8, weight: .light, design: .serif))
-                                    .italic()
-                                    .foregroundColor(.white.opacity(0.4))
-                                
+                                if isActiveLayout {
+                                    Text(pomodoroManager.isRunning ? "FOCUSING" : "PAUSED")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundColor(.orange)
+                                        .tracking(1.5)
+
+                                    Text("on")
+                                        .font(.system(size: 8, weight: .light, design: .serif))
+                                        .italic()
+                                        .foregroundColor(.white.opacity(0.4))
+                                }
+
                                 ZStack {
+                                    if pomodoroManager.currentTask.isEmpty {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "pencil.line")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.orange.opacity(0.5))
+                                            Text(pomodoroManager.isRunning ? "What's your focus? (press Enter to attach)" : "What's your focus?")
+                                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                .foregroundColor(.white.opacity(0.25))
+                                        }
+                                        .transition(.opacity)
+                                    }
+
                                     HStack(spacing: 4) {
                                         TextField("", text: $pomodoroManager.currentTask)
                                             .textFieldStyle(PlainTextFieldStyle())
                                             .multilineTextAlignment(.center)
-                                            .foregroundColor(.white.opacity(0.95))
-                                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                                            .foregroundColor(.white.opacity(isActiveLayout ? 0.95 : 1))
+                                            .font(.system(size: 12, weight: isActiveLayout ? .bold : .medium, design: .rounded))
                                             .focused($taskFieldFocused)
                                             .onTapGesture {
                                                 NSApp.activate(ignoringOtherApps: true)
                                                 taskFieldFocused = true
                                             }
-                                        
-                                        Image(systemName: "pencil")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.white.opacity(0.4))
-                                            .onTapGesture {
-                                                NSApp.activate(ignoringOtherApps: true)
-                                                taskFieldFocused = true
+                                            .onSubmit {
+                                                pomodoroManager.currentTask = pomodoroManager.currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                pomodoroManager.saveTaskToRecent()
+                                                if !isActiveLayout && !pomodoroManager.isRunning {
+                                                    displayMode = .work
+                                                    pomodoroManager.sessionType = .work
+                                                    pomodoroManager.timeRemaining = pomodoroManager.workDuration
+                                                    pomodoroManager.start()
+                                                }
                                             }
-                                    }
-                                        .onSubmit {
-                                            pomodoroManager.currentTask = pomodoroManager.currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
-                                            pomodoroManager.saveTaskToRecent()
-                                        }
-                                    
-                                    HStack(spacing: 6) {
-                                        Spacer()
-                                        Button(action: {
-                                            withAnimation {
-                                                pomodoroManager.completeCurrentTask()
-                                            }
-                                        }) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .font(.system(size: 13))
-                                                .foregroundColor(.green.opacity(0.85))
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                        .help("Mark task complete")
-                                        
-                                        Button(action: { pomodoroManager.currentTask = "" }) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.white.opacity(0.25))
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                        .help("Clear task")
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                            }
-                            .padding(.vertical, 4)
-                            .transition(.opacity)
-                        } else {
-                            // Task input field (shown when idle OR when running without a task yet)
-                            ZStack {
-                                if pomodoroManager.currentTask.isEmpty {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "pencil.line")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.orange.opacity(0.5))
-                                        Text(pomodoroManager.isRunning ? "What's your focus? (press Enter to attach)" : "What's your focus?")
-                                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                                            .foregroundColor(.white.opacity(0.25))
-                                    }
-                                    .transition(.opacity)
-                                }
 
-                                TextField(
-                                    "",
-                                    text: $pomodoroManager.currentTask
-                                )
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(.white)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .focused($taskFieldFocused)
-                                .onTapGesture {
-                                    NSApp.activate(ignoringOtherApps: true)
-                                    taskFieldFocused = true
-                                }
-                                .onChange(of: pomodoroManager.currentTask) { newValue in
-                                    // When user types first letter and view switches to the active
-                                    // "FOCUSING on" layout with a different TextField, SwiftUI
-                                    // destroys this field — immediately re-focus the replacement.
-                                    if !newValue.isEmpty && pomodoroManager.isRunning {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                            NSApp.activate(ignoringOtherApps: true)
-                                            taskFieldFocused = true
+                                        if isActiveLayout {
+                                            Image(systemName: "pencil")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.white.opacity(0.4))
+                                                .onTapGesture {
+                                                    NSApp.activate(ignoringOtherApps: true)
+                                                    taskFieldFocused = true
+                                                }
                                         }
                                     }
-                                }
-                                .onSubmit {
-                                    pomodoroManager.currentTask = pomodoroManager.currentTask.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    pomodoroManager.saveTaskToRecent()
-                                    if !pomodoroManager.isRunning {
-                                        displayMode = .work
-                                        pomodoroManager.sessionType = .work
-                                        pomodoroManager.timeRemaining = pomodoroManager.workDuration
-                                        pomodoroManager.start()
-                                    }
-                                }
 
-                                if !pomodoroManager.currentTask.isEmpty {
-                                    HStack(spacing: 6) {
-                                        Spacer()
-                                        Button(action: {
-                                            withAnimation {
-                                                pomodoroManager.completeCurrentTask()
+                                    if !pomodoroManager.currentTask.isEmpty {
+                                        HStack(spacing: 6) {
+                                            Spacer()
+                                            Button(action: {
+                                                withAnimation {
+                                                    pomodoroManager.completeCurrentTask()
+                                                }
+                                            }) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 13))
+                                                    .foregroundColor(.green.opacity(0.85))
                                             }
-                                        }) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .font(.system(size: 13))
-                                                .foregroundColor(.green.opacity(0.85))
+                                            .buttonStyle(PlainButtonStyle())
+                                            .help("Mark task complete")
+
+                                            Button(action: { pomodoroManager.currentTask = "" }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.white.opacity(0.25))
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                            .help("Clear task")
                                         }
-                                        .buttonStyle(PlainButtonStyle())
-                                        .help("Mark task complete")
-                                        
-                                        Button(action: { pomodoroManager.currentTask = "" }) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.white.opacity(0.25))
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                        .help("Clear task")
                                     }
                                 }
+                                .padding(.horizontal, isActiveLayout ? 16 : 12)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.05))
+                            .padding(.vertical, isActiveLayout ? 4 : 8)
+                            .background(Color.white.opacity(isActiveLayout ? 0 : 0.05))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(Color.orange.opacity(0.18), lineWidth: 1)
+                                    .stroke(Color.orange.opacity(isActiveLayout ? 0 : 0.18), lineWidth: 1)
                             )
                             .frame(width: 420)
-                            .padding(.top, 4)
+                            .padding(.top, isActiveLayout ? 0 : 4)
                             .transition(.opacity)
                         }
                     }

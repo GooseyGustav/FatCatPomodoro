@@ -84,7 +84,7 @@ class PomodoroManager: ObservableObject {
 
     /// Seconds of work done in the current session — valid for both count-up and countdown.
     var elapsedWorkSeconds: Int {
-        isInfiniteFlow ? timeRemaining : workDuration - timeRemaining
+        isInfiniteFlow ? timeRemaining : workDuration + extendedSeconds - timeRemaining
     }
 
     /// A work session that was started and not yet completed/discarded —
@@ -109,6 +109,15 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Shown by the one-minute-warning popup: offers to extend the running
+    /// session before it ends. AppDelegate observes this to show/hide the
+    /// prompt window.
+    @Published var showExtendPrompt: Bool = false
+    /// Seconds added via extendSession(by:) during the current session — kept
+    /// separate from workDuration so the dial's preset is untouched and
+    /// elapsed-time logging stays correct.
+    private var extendedSeconds: Int = 0
+
     private var timer: AnyCancellable?
     private var lastUpdate: Date?
     private var cancellables = Set<AnyCancellable>()
@@ -520,6 +529,7 @@ class PomodoroManager: ObservableObject {
             }
         }
         isRunning = false
+        showExtendPrompt = false
         timer?.cancel()
         timer = nil
         if dndAutoToggle { NotificationManager.shared.setDND(enabled: false) }
@@ -546,6 +556,8 @@ class PomodoroManager: ObservableObject {
     func reset() {
         pause()
         isPausedConfirming = false
+        showExtendPrompt = false
+        extendedSeconds = 0
         sessionStartDate = nil
         if sessionType == .work {
             timeRemaining = isInfiniteFlow ? 0 : workDuration
@@ -554,6 +566,18 @@ class PomodoroManager: ObservableObject {
         }
     }
     
+    /// Extend the running session from the one-minute-warning popup. The
+    /// added time is tracked separately so logging and the progress ring stay
+    /// accurate and the dial's configured duration is untouched.
+    func extendSession(by minutes: Int) {
+        defer { showExtendPrompt = false }
+        guard isRunning, minutes > 0 else { return }
+        timeRemaining += minutes * 60
+        if !(isInfiniteFlow && sessionType == .work) {
+            extendedSeconds += minutes * 60
+        }
+    }
+
     /// Asymmetric by design: skipping work completes the session (full
     /// logging fan-out via completeSession), while skipping a break just
     /// starts the next work session without logging.
@@ -580,10 +604,16 @@ class PomodoroManager: ObservableObject {
         }
         if timeRemaining > 0 {
             timeRemaining -= 1
+            // One-minute warning: offer to extend before the session rolls
+            // over. Re-fires after an extension when 60 s is reached again.
+            if timeRemaining == 60 {
+                showExtendPrompt = true
+            }
             if strictModeEnabled && sessionType == .work && timeRemaining % 5 == 0 {
                 enforceStrictMode()
             }
         } else {
+            showExtendPrompt = false
             if sessionType == .work {
                 completeSession()
             } else {
@@ -650,6 +680,8 @@ class PomodoroManager: ObservableObject {
     private func completeSession() {
         pause(true) // silent: COMPLETED event is sent below, not FLOW_PAUSE
         isPausedConfirming = false
+        showExtendPrompt = false
+        extendedSeconds = 0
         if sessionType == .work {
             sessionsInCycle += 1
             
@@ -715,6 +747,8 @@ class PomodoroManager: ObservableObject {
     private func startWorkSession() {
         pause(true) // silent: break ending naturally, not a user pause
         isPausedConfirming = false
+        showExtendPrompt = false
+        extendedSeconds = 0
 
         // Log break activity to calendar if user chose one
         let breakEnd = Date()
@@ -760,7 +794,8 @@ class PomodoroManager: ObservableObject {
     
     var progress: Double {
         if isInfiniteFlow && sessionType == .work { return 0 } // no end → no ring
-        let total = sessionType == .work ? Double(workDuration) : Double(breakDuration)
+        let base = sessionType == .work ? Double(workDuration) : Double(breakDuration)
+        let total = base + Double(extendedSeconds) // extensions stretch the ring, not rewind it
         guard total > 0 else { return 0 }
         return 1.0 - (Double(timeRemaining) / total)
     }

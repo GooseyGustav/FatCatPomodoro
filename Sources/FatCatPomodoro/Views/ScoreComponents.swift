@@ -6,11 +6,21 @@ struct CatIconView: View {
     let emoji: String
     let size: CGFloat
 
+    /// Loaded once per launch — the body re-renders every timer tick, so the
+    /// lookup must not hit the filesystem each time. Checks the main bundle
+    /// (Xcode builds) and the nested SwiftPM resource bundle (dev builds),
+    /// same fallback chain the break video uses.
+    private static let catImage: NSImage? = {
+        let path = Bundle.main.path(forResource: "face_cat", ofType: "png")
+            ?? Bundle(for: AppDelegate.self).path(forResource: "face_cat", ofType: "png")
+            ?? Bundle.main.url(forResource: "FatCatPomodoro_FatCatPomodoro", withExtension: "bundle")
+                .flatMap(Bundle.init(url:))?
+                .path(forResource: "face_cat", ofType: "png")
+        return path.flatMap { NSImage(contentsOfFile: $0) }
+    }()
+
     var body: some View {
-        let path = Bundle.main.path(forResource: "face_cat", ofType: "png") ?? 
-                   Bundle(for: AppDelegate.self).path(forResource: "face_cat", ofType: "png")
-        
-        if let path = path, let nsImage = NSImage(contentsOfFile: path) {
+        if let nsImage = Self.catImage {
             Image(nsImage: nsImage)
                 .resizable()
                 .scaledToFit()

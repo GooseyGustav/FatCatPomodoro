@@ -172,6 +172,18 @@ cp .build/arm64-apple-macosx/debug/FatCatPomodoro .build/FatCatPomodoro.app/Cont
 cp Sources/FatCatPomodoro/Info.plist .build/FatCatPomodoro.app/Contents/
 cp -R .build/arm64-apple-macosx/debug/FatCatPomodoro_FatCatPomodoro.bundle .build/FatCatPomodoro.app/Contents/Resources/
 
+# 3b. Substitute the Xcode build variables in the copied plist (the source
+#     plist uses $(EXECUTABLE_NAME) etc., which only Xcode expands — without
+#     this, `open` fails with "executable is missing")
+sed -i '' \
+  -e 's/$(EXECUTABLE_NAME)/FatCatPomodoro/g' \
+  -e 's/$(PRODUCT_NAME)/FatCatPomodoro/g' \
+  -e 's/$(PRODUCT_BUNDLE_IDENTIFIER)/com.fatcat.FatCatPomodoro/g' \
+  -e 's/$(MARKETING_VERSION)/1.0.0/g' \
+  -e 's/$(CURRENT_PROJECT_VERSION)/1/g' \
+  -e 's/$(DEVELOPMENT_LANGUAGE)/en/g' \
+  .build/FatCatPomodoro.app/Contents/Info.plist
+
 # 4. Register the URL scheme with Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f .build/FatCatPomodoro.app
 

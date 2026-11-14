@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var skipButtonWindow: NSWindow?
     var breakTimerWindow: NSWindow?
     var alertWindow: NSWindow?
+    var extendPromptWindow: NSWindow?
     let pomodoroManager = PomodoroManager()
     private var cancellables = Set<AnyCancellable>()
 
@@ -49,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         setupFullScreenObserver()
         setupAlertObserver()
+        setupExtendPromptObserver()
         setupScreenChangeObserver()
         setupHotkeys()
         setupStatusItem()
@@ -191,6 +193,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .store(in: &cancellables)
     }
 
+    // One-minute warning: slides a small "extend?" pill in under the island.
+    private func setupExtendPromptObserver() {
+        pomodoroManager.$showExtendPrompt
+            .receive(on: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] show in
+                if show {
+                    self?.showExtendPrompt()
+                } else {
+                    self?.hideExtendPrompt()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func showExtendPrompt() {
+        if extendPromptWindow == nil {
+            let screen = notchScreen
+            let w: CGFloat = 400
+            let h: CGFloat = 56
+            // A non-activating panel: the buttons are clickable but the prompt
+            // never steals keyboard focus from whatever the user is doing.
+            let win = NSPanel(
+                contentRect: NSRect(x: screen.frame.midX - w / 2,
+                                    y: screen.frame.maxY - h - 54,
+                                    width: w, height: h),
+                styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            win.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 4)
+            win.backgroundColor = .clear
+            win.isOpaque = false
+            win.hasShadow = true
+            win.ignoresMouseEvents = false
+            win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            win.contentView = NSHostingView(rootView: ExtendPromptView(pomodoroManager: pomodoroManager))
+            extendPromptWindow = win
+        }
+        extendPromptWindow?.orderFrontRegardless()
+    }
+
+    private func hideExtendPrompt() {
+        extendPromptWindow?.orderOut(nil)
+        extendPromptWindow = nil
+    }
+
     private func showForegroundAlert() {
         if alertWindow == nil {
             let screen = notchScreen
@@ -278,30 +327,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             breakBorderWindow?.orderFrontRegardless()
 
-            // 2. Interactive Draggable Cat Window — remembered position, size, & exit drag
+            // 2. Interactive Draggable Cat Window — enters maxed-out, drag & resize during the break
             if fullScreenWindow == nil {
-                let savedScale = UserDefaults.standard.double(forKey: "pomodoro.breakCatScale_v1")
-                let scale = savedScale > 0 ? min(2.2, max(0.45, savedScale)) : 1.0
                 let baseW: CGFloat = 560
                 let baseH: CGFloat = 315
+                // The cat always enters at maximum size — practically the full
+                // screen, like the original full-screen player. Saved
+                // scale/position are deliberately ignored on entry so a
+                // shrunken cat from a past break never carries over; dragging
+                // and resizing still work for the duration of the break.
+                let scale = min((screen.frame.width * 0.98) / baseW, (screen.frame.height * 0.88) / baseH)
                 let catW = baseW * scale
                 let catH = baseH * scale
-
-                let defaultX = screen.frame.midX - catW / 2
-                let defaultY = screen.frame.midY - catH / 2
-                let savedX = UserDefaults.standard.double(forKey: "pomodoro.breakCatX_v1")
-                let savedY = UserDefaults.standard.double(forKey: "pomodoro.breakCatY_v1")
-
-                var startX = savedX != 0 ? savedX : defaultX
-                var startY = savedY != 0 ? savedY : defaultY
-
-                // Safety validation: ensure the cat is on-screen
-                if startX + catW < screen.frame.minX + 50 || startX > screen.frame.maxX - 50 {
-                    startX = defaultX
-                }
-                if startY + catH < screen.frame.minY + 50 || startY > screen.frame.maxY - 50 {
-                    startY = defaultY
-                }
+                let startX = screen.frame.midX - catW / 2
+                let startY = screen.frame.midY - catH / 2
 
                 let swiftPMBundle: Bundle? = {
                     if let url = Bundle.main.url(forResource: "FatCatPomodoro_FatCatPomodoro", withExtension: "bundle") {
@@ -377,24 +416,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let screen = notchScreen
+        // Window size tracks the remembered zoom — resizing changes the window
+        // frame itself (like the break cat), not just scaled content in a
+        // fixed frame.
+        let savedScale = UserDefaults.standard.double(forKey: "pomodoro.breakOverlayScale")
+        let scale = savedScale > 0 ? min(2.2, max(0.65, savedScale)) : 1.0
+        let winW = BreakTimerOverlay.baseSize.width * scale
+        let winH = BreakTimerOverlay.baseSize.height * scale
+
         let savedX = UserDefaults.standard.double(forKey: "pomodoro.breakOverlayX_v4")
         let savedY = UserDefaults.standard.double(forKey: "pomodoro.breakOverlayY_v4")
         let defaultX = screen.frame.origin.x + 150
-        let defaultY = screen.frame.maxY - 350
+        let defaultY = screen.frame.maxY - 100 - winH
         var startX = savedX != 0 ? savedX : defaultX
         var startY = savedY != 0 ? savedY : defaultY
-        
+
         // Safety validation: Ensure the overlay window remains on screen
-        if startY + 180 > screen.frame.maxY || startY < screen.frame.origin.y {
+        if startY + winH > screen.frame.maxY || startY < screen.frame.origin.y {
             startY = defaultY
         }
-        if startX < screen.frame.origin.x || startX + 380 > screen.frame.maxX {
+        if startX < screen.frame.origin.x || startX + winW > screen.frame.maxX {
             startX = defaultX
         }
-        
+
         if breakTimerWindow == nil {
             let timerWin = DraggableOverlayWindow(
-                contentRect: NSRect(x: startX, y: startY, width: 550, height: 250),
+                contentRect: NSRect(x: startX, y: startY, width: winW, height: winH),
                 styleMask: [.borderless, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -519,6 +566,136 @@ final class PurchaseCoordinator {
         )
         anchorWindow = win
         return win
+    }
+}
+
+// MARK: - Extend Prompt
+
+/// Catches trackpad/mouse-wheel swipes over the extend-prompt window and
+/// dismisses it with a slide-up + fade. Hit-test transparent; the monitor is
+/// scoped to the prompt's own window.
+private struct SwipeDismissCatcher: NSViewRepresentable {
+    let onDismiss: () -> Void
+
+    func makeNSView(context: Context) -> SwipeView {
+        let view = SwipeView()
+        view.onDismiss = onDismiss
+        return view
+    }
+
+    func updateNSView(_ nsView: SwipeView, context: Context) {
+        nsView.onDismiss = onDismiss
+    }
+
+    final class SwipeView: NSView {
+        var onDismiss: (() -> Void)?
+        private var monitor: Any?
+        private var accumulated: CGFloat = 0
+        private var dismissing = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                guard monitor == nil else { return }
+                monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+                    guard let self, event.window === self.window, !self.dismissing else { return event }
+                    let delta = event.scrollingDeltaY
+                    guard delta != 0 else { return event }
+                    // Any decisive vertical swipe dismisses — direction isn't
+                    // worth fighting natural-scrolling inversion over.
+                    self.accumulated += abs(delta)
+                    if self.accumulated > 30 {
+                        self.slideOutAndDismiss()
+                    }
+                    return nil
+                }
+            } else if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        private func slideOutAndDismiss() {
+            dismissing = true
+            guard let win = window else { onDismiss?(); return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                win.animator().alphaValue = 0
+                var f = win.frame
+                f.origin.y += 36
+                win.animator().setFrame(f, display: true)
+            }, completionHandler: { [weak self] in
+                self?.onDismiss?()
+                self?.accumulated = 0
+                self?.dismissing = false
+            })
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+/// One-minute warning pill: "Flow/Break ends in 1 min — +1 +2 +5 ✕".
+/// Buttons call PomodoroManager.extendSession(by:), which also dismisses it;
+/// swiping over the pill slides it away.
+struct ExtendPromptView: View {
+    @ObservedObject var pomodoroManager: PomodoroManager
+
+    private func extendButton(_ minutes: Int) -> some View {
+        Button(action: { pomodoroManager.extendSession(by: minutes) }) {
+            Text("+\(minutes)m")
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .foregroundColor(.black)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.9))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .help("Extend by \(minutes) minute\(minutes == 1 ? "" : "s")")
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.orange)
+
+            Text(pomodoroManager.sessionType == .work ? "Flow ends in 1 min" : "Break ends in 1 min")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.85))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 8)
+
+            extendButton(1)
+            extendButton(2)
+            extendButton(5)
+
+            Button(action: { pomodoroManager.showExtendPrompt = false }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.3))
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help("Dismiss (or swipe over the pill)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background {
+            ZStack {
+                Capsule().fill(Color.black.opacity(0.55))
+                Capsule().stroke(Color.orange.opacity(0.35), lineWidth: 1)
+            }
+        }
+        .background(SwipeDismissCatcher { pomodoroManager.showExtendPrompt = false })
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -684,6 +861,48 @@ private struct ScrollZoomCatcher: NSViewRepresentable {
     }
 }
 
+/// Two-finger scroll over the break-timer overlay moves the window — it
+/// follows the fingers like dragging — while zooming stays on pinch and the
+/// hover ± buttons. Hit-test transparent, scoped to its own window.
+private struct ScrollMoveCatcher: NSViewRepresentable {
+    func makeNSView(context: Context) -> MoveView { MoveView() }
+    func updateNSView(_ nsView: MoveView, context: Context) {}
+
+    final class MoveView: NSView {
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil {
+                guard monitor == nil else { return }
+                monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+                    guard let self, let win = self.window, event.window === win else { return event }
+                    let dx = event.scrollingDeltaX
+                    let dy = event.scrollingDeltaY
+                    guard dx != 0 || dy != 0 else { return event }
+                    // Natural scrolling reports deltas content-wise; flip for
+                    // traditional wheels so the window always follows the fingers.
+                    let m: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+                    var origin = win.frame.origin
+                    origin.x -= dx * m
+                    origin.y -= dy * m
+                    win.setFrameOrigin(origin)
+                    return nil
+                }
+            } else if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
 struct BreakTimerOverlay: View {
     @ObservedObject var pomodoroManager: PomodoroManager
     weak var window: NSWindow?
@@ -693,8 +912,25 @@ struct BreakTimerOverlay: View {
     @State private var hoveredZoomButton: String? = nil
     @State private var pinchBaseScale: Double? = nil
 
+    /// Window size at scale 1 — the window frame is baseSize × scale, so
+    /// zooming resizes the actual window (like the break cat), not just the
+    /// content inside a fixed frame.
+    static let baseSize = NSSize(width: 400, height: 185)
+
     private func clampScale(_ value: Double) -> Double {
-        min(1.8, max(0.65, value))
+        min(2.2, max(0.65, value))
+    }
+
+    /// Apply a new zoom: persist it and resize the window keeping the top-left
+    /// corner anchored, so the overlay grows toward the screen center instead
+    /// of walking off the top edge.
+    private func applyScale(_ newScale: Double) {
+        let clamped = clampScale(newScale)
+        scale = clamped
+        guard let win = window else { return }
+        let newW = Self.baseSize.width * clamped
+        let newH = Self.baseSize.height * clamped
+        win.setFrame(NSRect(x: win.frame.minX, y: win.frame.maxY - newH, width: newW, height: newH), display: true)
     }
 
     /// Generous hit area + orange hover so it reads as clickable and survives
@@ -742,8 +978,8 @@ struct BreakTimerOverlay: View {
                         
                         if isHovering {
                             HStack(spacing: 2) {
-                                zoomButton("minus") { scale = clampScale(scale - 0.1) }
-                                zoomButton("plus") { scale = clampScale(scale + 0.1) }
+                                zoomButton("minus") { applyScale(scale - 0.1) }
+                                zoomButton("plus") { applyScale(scale + 0.1) }
                             }
                             .transition(.opacity)
                         }
@@ -807,15 +1043,13 @@ struct BreakTimerOverlay: View {
             MagnificationGesture()
                 .onChanged { val in
                     if pinchBaseScale == nil { pinchBaseScale = scale }
-                    scale = clampScale((pinchBaseScale ?? scale) * val)
+                    applyScale((pinchBaseScale ?? scale) * val)
                 }
                 .onEnded { _ in pinchBaseScale = nil }
         )
         .background(
-            // Two-finger scroll (or mouse wheel) resizes like a video player
-            ScrollZoomCatcher { delta in
-                scale = clampScale(scale + delta)
-            }
+            // Two-finger scroll moves the overlay; resizing is pinch / ± only.
+            ScrollMoveCatcher()
         )
         .onAppear {
             isPulsing = true
@@ -1131,9 +1365,11 @@ struct BreakCatOverlayView: View {
     }
     
     private func clampScale(_ value: Double) -> Double {
-        min(2.2, max(0.45, value))
+        // Upper bound must stay above the full-screen entry scale (≈2.6 on a
+        // MacBook display) or the first zoom gesture would snap the cat down.
+        min(4.5, max(0.45, value))
     }
-    
+
     private func applyScale(_ newScale: Double) {
         let clamped = clampScale(newScale)
         scale = clamped
