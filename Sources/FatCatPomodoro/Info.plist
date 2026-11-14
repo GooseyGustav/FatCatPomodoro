@@ -34,9 +34,9 @@
 	<key>FATCLicenseAPIBaseURL</key>
 	<string>https://api.asifthatworks.com</string>
 	<key>FATCLicenseKeyID</key>
-	<string>fatc-2026-01</string>
+	<string>fatc-2026-02</string>
 	<key>FATCLicensePublicKey</key>
-	<string>MxpFfILWXQA8u_x9R4yHz02TrtxmhGR5ARwdnz4wZHQ</string>
+	<string>cC-v2bdSBxweUpcQEAPDQHWDLeQZnt4PMXtoIJ_rEpc</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationCategoryType</key>
@@ -64,7 +64,7 @@
 	<key>SUFeedURL</key>
 	<string>https://dl.asifthatworks.com/fatcatpomodoro/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>KOADAwtJNo5GU9lncTqdPN+INC++VwjUuVE0Qh/jjGo=</string>
+	<string>OAoNVG91B0B2If1Rt3MKK4X66QwFpJ0DUSLUaO4+FOo=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

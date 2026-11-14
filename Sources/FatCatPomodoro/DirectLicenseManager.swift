@@ -32,7 +32,7 @@ final class DirectLicenseManager: ObservableObject {
     private init() {
         let info = Bundle.main.infoDictionary ?? [:]
         let productID = "fatcatpomodoro"
-        let kid = (info["FATCLicenseKeyID"] as? String) ?? "fatc-2026-01"
+        let kid = (info["FATCLicenseKeyID"] as? String) ?? "fatc-2026-02"
         let keyString = (info["FATCLicensePublicKey"] as? String) ?? Self.developmentPublicKey
         let base = URL(string: (info["FATCLicenseAPIBaseURL"] as? String) ?? "https://api.asifthatworks.com")
             ?? URL(string: "https://api.asifthatworks.com")!
@@ -52,7 +52,7 @@ final class DirectLicenseManager: ObservableObject {
 
     /// Only used if Info.plist is missing the key (e.g. a stale local build).
     /// Production builds read FATCLicensePublicKey from Info.plist.
-    private static let developmentPublicKey = "MxpFfILWXQA8u_x9R4yHz02TrtxmhGR5ARwdnz4wZHQ"
+    private static let developmentPublicKey = "cC-v2bdSBxweUpcQEAPDQHWDLeQZnt4PMXtoIJ_rEpc"
 
     var statusText: String {
         switch state {

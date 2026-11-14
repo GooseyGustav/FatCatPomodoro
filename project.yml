@@ -54,10 +54,10 @@ targetTemplates:
         NSRemindersFullAccessUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         NSRemindersUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         FATCLicenseAPIBaseURL: "https://api.asifthatworks.com"
-        FATCLicenseKeyID: "fatc-2026-01"
-        FATCLicensePublicKey: "MxpFfILWXQA8u_x9R4yHz02TrtxmhGR5ARwdnz4wZHQ"
+        FATCLicenseKeyID: "fatc-2026-02"
+        FATCLicensePublicKey: "cC-v2bdSBxweUpcQEAPDQHWDLeQZnt4PMXtoIJ_rEpc"
         SUFeedURL: "https://dl.asifthatworks.com/fatcatpomodoro/appcast.xml"
-        SUPublicEDKey: "KOADAwtJNo5GU9lncTqdPN+INC++VwjUuVE0Qh/jjGo="
+        SUPublicEDKey: "OAoNVG91B0B2If1Rt3MKK4X66QwFpJ0DUSLUaO4+FOo="
         SUEnableInstallerLauncherService: true
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
