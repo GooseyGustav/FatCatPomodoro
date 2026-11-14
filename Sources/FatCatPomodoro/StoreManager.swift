@@ -1,8 +1,11 @@
 import Foundation
-import StoreKit
 import AppKit
 import Combine
 
+#if FATCAT_APPSTORE
+import StoreKit
+
+/// Mac App Store entitlement source: StoreKit only.
 @MainActor
 class StoreManager: ObservableObject {
     static let shared = StoreManager()
@@ -19,45 +22,16 @@ class StoreManager: ObservableObject {
     @Published private(set) var productLoadState: ProductLoadState = .loading
     @Published private(set) var lastLoadError: String? = nil
 
-    #if FATCAT_DIRECT
-    /// True when this Mac holds a valid direct-download license. Kept in sync
-    /// with DirectLicenseManager so every existing `isUnlocked` call site works
-    /// unchanged. The App Store build compiles this branch out.
-    @Published private(set) var directLicenseActive: Bool = false
-    private var directLicenseCancellable: AnyCancellable?
-    #endif
-
-    var isUnlocked: Bool {
-        if hasActiveEntitlement { return true }
-        #if FATCAT_DIRECT
-        return directLicenseActive
-        #else
-        return false
-        #endif
-    }
+    var isUnlocked: Bool { hasActiveEntitlement }
 
     private var updateListenerTask: Task<Void, Error>? = nil
-    
+
     private let lifetimeProductId = "com.fatcat.FatCatPomodoro.lifetime"
     private let monthlyProductId = "com.fatcat.FatCatPomodoro.monthly"
 
     private init() {
         // Start listening to transactions immediately
         updateListenerTask = listenForTransactions()
-
-        #if FATCAT_DIRECT
-        // Direct-download entitlement. Activation happens in the license
-        // sheet/window; this keeps the existing premium gates in sync.
-        directLicenseCancellable = DirectLicenseManager.shared.$isLicensed
-            .receive(on: RunLoop.main)
-            .sink { [weak self] licensed in
-                self?.directLicenseActive = licensed
-            }
-        Task { @MainActor in
-            await DirectLicenseManager.shared.refreshIfNeeded()
-            directLicenseActive = DirectLicenseManager.shared.isLicensed
-        }
-        #endif
 
         Task {
             await fetchProducts()
@@ -216,3 +190,31 @@ class StoreManager: ObservableObject {
 enum StoreError: Error {
     case failedVerification
 }
+
+#else
+
+/// Direct-download entitlement source. StoreKit is not linked into this build;
+/// the only entitlement is the signed license envelope verified by LicenseKit.
+@MainActor
+final class StoreManager: ObservableObject {
+    static let shared = StoreManager()
+
+    @Published private(set) var directLicenseActive = false
+    private var directLicenseCancellable: AnyCancellable?
+
+    var isUnlocked: Bool { directLicenseActive }
+
+    private init() {
+        directLicenseCancellable = DirectLicenseManager.shared.$isLicensed
+            .receive(on: RunLoop.main)
+            .sink { [weak self] licensed in
+                self?.directLicenseActive = licensed
+            }
+        Task { @MainActor in
+            await DirectLicenseManager.shared.refreshIfNeeded()
+            directLicenseActive = DirectLicenseManager.shared.isLicensed
+        }
+    }
+}
+
+#endif

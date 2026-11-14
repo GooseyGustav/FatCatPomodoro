@@ -89,7 +89,7 @@ struct DirectLicenseView: View {
                     Button {
                         NSWorkspace.shared.open(manager.buyURL)
                     } label: {
-                        Text("Buy — €9.99")
+                        Text("Buy — €7.77")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)
@@ -167,7 +167,7 @@ struct DirectLicenseSection: View {
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.orange)
                 } else {
-                    Button("Buy — €9.99") { NSWorkspace.shared.open(manager.buyURL) }
+                    Button("Buy — €7.77") { NSWorkspace.shared.open(manager.buyURL) }
                         .buttonStyle(PlainButtonStyle())
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(.orange)

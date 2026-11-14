@@ -10,13 +10,15 @@ let package = Package(
         .executable(name: "FatCatPomodoro", targets: ["FatCatPomodoro"])
     ],
     dependencies: [
-        .package(url: "https://github.com/GooseyGustav/asifthatworks-licensekit.git", branch: "main")
+        .package(url: "https://github.com/GooseyGustav/asifthatworks-licensekit.git", branch: "main"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.4")
     ],
     targets: [
         .executableTarget(
             name: "FatCatPomodoro",
             dependencies: [
-                .product(name: "LicenseKit", package: "asifthatworks-licensekit")
+                .product(name: "LicenseKit", package: "asifthatworks-licensekit"),
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/FatCatPomodoro",
             exclude: ["Info.plist"],

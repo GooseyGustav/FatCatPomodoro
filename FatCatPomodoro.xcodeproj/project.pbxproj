@@ -12,6 +12,7 @@
 		04A3847E94E9C214ADF44AD5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D622D2297642149D28C78B3 /* Assets.xcassets */; };
 		0550010537B30B9F894E3FD7 /* IslandWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A22B0A8A4530AE0D837431E /* IslandWindow.swift */; };
 		1ADD8A428A48EE70B0AC3A53 /* DirectLicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260ADFBD37874D41ED122DEE /* DirectLicenseManager.swift */; };
+		223D6F7F9ED3F5E8EF21B9ED /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DAE39D1BDBD761E11EECBB41 /* Sparkle */; };
 		28E73CFF771F8DA59731DBAA /* PomodoroActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB235001561BCDC4E4D4443 /* PomodoroActivityView.swift */; };
 		2E929D283F5A9FFC282566C8 /* HorizontalDialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B134928F0CEBC9159EE686 /* HorizontalDialView.swift */; };
 		33996C4A96408555681F7572 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC20ECDAE162667D07E849A5 /* LaunchAtLoginManager.swift */; };
@@ -30,6 +31,7 @@
 		A60B82101282B00FB2D341C5 /* face_cat.png in Resources */ = {isa = PBXBuildFile; fileRef = E8C3938410DDA599A8500A48 /* face_cat.png */; };
 		BD5516CB213C6D6208EB71C4 /* MusicManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F04F6B27857427ADCBE682 /* MusicManager.swift */; };
 		C3462F0C3247694DC8F3453F /* LicenseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 31E2212D8366E77520B04A84 /* LicenseKit */; };
+		D362CF870C2C15AA6202324A /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CC1046347DE74A921F0490 /* Updater.swift */; };
 		DBB7DA394124D8CF3D918435 /* PomodoroHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB865F42C61E88E0BE5FE920 /* PomodoroHistoryManager.swift */; };
 		DF91BE094D04A9485CA27DF9 /* cleancat.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = FCA4C414B16FC2823FFAC70A /* cleancat.mp4 */; };
 		E1741B636F8E7F657A2608EA /* face_cat.icns in Resources */ = {isa = PBXBuildFile; fileRef = FA23ED5FB2DF87CD9D8E92E9 /* face_cat.icns */; };
@@ -42,6 +44,7 @@
 		0F76F65167B50AA1ABB83733 /* DirectLicenseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectLicenseView.swift; sourceTree = "<group>"; };
 		156A6D0992E77D4FB864CD58 /* IslandView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandView.swift; sourceTree = "<group>"; };
 		1A22B0A8A4530AE0D837431E /* IslandWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandWindow.swift; sourceTree = "<group>"; };
+		23CC1046347DE74A921F0490 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 		260ADFBD37874D41ED122DEE /* DirectLicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectLicenseManager.swift; sourceTree = "<group>"; };
 		2BB235001561BCDC4E4D4443 /* PomodoroActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroActivityView.swift; sourceTree = "<group>"; };
 		2D622D2297642149D28C78B3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -77,6 +80,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C3462F0C3247694DC8F3453F /* LicenseKit in Frameworks */,
+				223D6F7F9ED3F5E8EF21B9ED /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -147,6 +151,7 @@
 				911C9EA72AD2ADDE50B8788B /* StoreConfiguration.storekit */,
 				98903B45656C042FEC8A4B19 /* StoreManager.swift */,
 				9E943987BCA84F4295CD4A21 /* StreakManager.swift */,
+				23CC1046347DE74A921F0490 /* Updater.swift */,
 			);
 			name = FatCatPomodoro;
 			path = Sources/FatCatPomodoro;
@@ -170,6 +175,7 @@
 			name = FatCatPomodoro;
 			packageProductDependencies = (
 				31E2212D8366E77520B04A84 /* LicenseKit */,
+				DAE39D1BDBD761E11EECBB41 /* Sparkle */,
 			);
 			productName = FatCatPomodoro;
 			productReference = 55B6A920A53CC077B4F31671 /* FatCatPomodoro.app */;
@@ -201,6 +207,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				8A076EF86B29CFB4A295D66E /* XCRemoteSwiftPackageReference "asifthatworks-licensekit" */,
+				95E7D05ED86A803AB2AE7259 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3DB8C0ACC8EBEE3A6F7D20A3 /* Products */;
@@ -255,6 +262,7 @@
 				56364E772C0937DD8D3A667A /* ScoreComponents.swift in Sources */,
 				9491BF6A047FEA62E1AACDEE /* StoreManager.swift in Sources */,
 				5BECE23CDD0EF7E0EF3D8787 /* StreakManager.swift in Sources */,
+				D362CF870C2C15AA6202324A /* Updater.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -326,10 +334,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/FatCatPomodoro/FatCatPomodoro.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = Sources/FatCatPomodoro/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fatcat.FatCatPomodoro;
 				PRODUCT_NAME = FatCatPomodoro;
 				SDKROOT = macosx;
@@ -409,10 +417,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/FatCatPomodoro/FatCatPomodoro.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = Sources/FatCatPomodoro/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fatcat.FatCatPomodoro;
 				PRODUCT_NAME = FatCatPomodoro;
 				SDKROOT = macosx;
@@ -452,6 +460,14 @@
 				kind = branch;
 			};
 		};
+		95E7D05ED86A803AB2AE7259 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -459,6 +475,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8A076EF86B29CFB4A295D66E /* XCRemoteSwiftPackageReference "asifthatworks-licensekit" */;
 			productName = LicenseKit;
+		};
+		DAE39D1BDBD761E11EECBB41 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 95E7D05ED86A803AB2AE7259 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

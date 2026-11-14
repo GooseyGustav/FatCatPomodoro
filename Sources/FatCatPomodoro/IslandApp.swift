@@ -1,7 +1,10 @@
 import SwiftUI
 import AppKit
 import Combine
+
+#if FATCAT_APPSTORE
 import StoreKit
+#endif
 
 @main
 struct IslandApp: App {
@@ -27,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var extendPromptWindow: NSWindow?
     #if FATCAT_DIRECT
     var licenseWindow: NSWindow?
+    let updater = Updater.shared
     #endif
     let pomodoroManager = PomodoroManager()
     private var cancellables = Set<AnyCancellable>()
@@ -96,6 +100,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let licenseItem = NSMenuItem(title: "License…", action: #selector(menuLicense), keyEquivalent: "")
         licenseItem.target = self
         menu.addItem(licenseItem)
+
+        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates), keyEquivalent: "")
+        updatesItem.target = updater
+        menu.addItem(updatesItem)
         #endif
 
         menu.addItem(NSMenuItem.separator())
@@ -526,6 +534,9 @@ class DraggableOverlayWindow: NSWindow {
 
 // MARK: - Purchase anchoring
 //
+// StoreKit-only. The direct build has no in-app purchase flow.
+#if FATCAT_APPSTORE
+//
 // Since macOS 15.2, StoreKit attaches every purchase confirmation to a "UI
 // anchor" — a foreground-active, key-capable window. This app is .accessory
 // with a non-activating overlay panel, so no valid anchor exists and purchases
@@ -609,6 +620,8 @@ final class PurchaseCoordinator {
         return win
     }
 }
+
+#endif
 
 // MARK: - Extend Prompt
 

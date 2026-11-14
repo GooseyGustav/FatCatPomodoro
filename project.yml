@@ -11,6 +11,9 @@ packages:
   LicenseKit:
     url: https://github.com/GooseyGustav/asifthatworks-licensekit.git
     branch: main
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.4
 
 configs:
   Debug: debug
@@ -51,8 +54,15 @@ targetTemplates:
         NSRemindersFullAccessUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         NSRemindersUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         FATCLicenseAPIBaseURL: "https://api.asifthatworks.com"
-        FATCLicenseKeyID: "fatcatpomodoro-2026-01"
-        FATCLicensePublicKey: "I5DN0FgCd9HX4a1lHNQvzcRm07AIyhuQ842nR1KmlHo"
+        FATCLicenseKeyID: "fatc-2026-01"
+        FATCLicensePublicKey: "MxpFfILWXQA8u_x9R4yHz02TrtxmhGR5ARwdnz4wZHQ"
+        SUFeedURL: "https://dl.asifthatworks.com/fatcatpomodoro/appcast.xml"
+        SUPublicEDKey: "KOADAwtJNo5GU9lncTqdPN+INC++VwjUuVE0Qh/jjGo="
+        SUEnableInstallerLauncherService: true
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        SUAutomaticallyUpdate: false
+        SUAllowsAutomaticUpdates: false
         CFBundleURLTypes:
           - CFBundleURLName: com.fatcat.FatCatPomodoro.license
             CFBundleURLSchemes:
@@ -67,12 +77,18 @@ targetTemplates:
         # there is no separate ".reminders" sandbox entitlement (iOS-only key,
         # rejected by App Store validation).
         com.apple.security.personal-information.calendars: true
+        # Sparkle 2 runs its installer outside the sandbox through XPC services.
+        # These exceptions let the sandboxed app talk to them (see Sparkle's
+        # sandboxing guide). $(PRODUCT_BUNDLE_IDENTIFIER) is expanded by codesign.
+        com.apple.security.temporary-exception.mach-lookup.global-name:
+          - "com.fatcat.FatCatPomodoro-spks"
+          - "com.fatcat.FatCatPomodoro-spki"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fatcat.FatCatPomodoro
         PRODUCT_NAME: FatCatPomodoro
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "6"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/FatCatPomodoro/FatCatPomodoro.entitlements
         INFOPLIST_FILE: Sources/FatCatPomodoro/Info.plist
@@ -94,3 +110,4 @@ targets:
     templates: [AppBase]
     dependencies:
       - package: LicenseKit
+      - package: Sparkle

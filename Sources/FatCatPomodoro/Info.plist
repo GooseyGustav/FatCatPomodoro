@@ -34,9 +34,9 @@
 	<key>FATCLicenseAPIBaseURL</key>
 	<string>https://api.asifthatworks.com</string>
 	<key>FATCLicenseKeyID</key>
-	<string>fatcatpomodoro-2026-01</string>
+	<string>fatc-2026-01</string>
 	<key>FATCLicensePublicKey</key>
-	<string>I5DN0FgCd9HX4a1lHNQvzcRm07AIyhuQ842nR1KmlHo</string>
+	<string>MxpFfILWXQA8u_x9R4yHz02TrtxmhGR5ARwdnz4wZHQ</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationCategoryType</key>
@@ -53,5 +53,19 @@
 	<string>FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends.</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://dl.asifthatworks.com/fatcatpomodoro/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>KOADAwtJNo5GU9lncTqdPN+INC++VwjUuVE0Qh/jjGo=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
