@@ -25,9 +25,16 @@ final class LicenseManagerModel: ObservableObject {
     var isUnlocked: Bool { isLicensed }
 
     func reload() async {
-        let status = await manager.currentEntitlement()
-        self.status = status
-        self.isLicensed = status.isLicensed
+        do {
+            let status = try await withRetry { () async throws -> LicenseStatus in
+                await self.manager.currentEntitlement()
+            }
+            self.status = status
+            self.isLicensed = status.isLicensed
+        } catch {
+            self.status = .invalid("Could not check the license status. Will retry shortly.")
+            self.isLicensed = false
+        }
     }
 
     func activate(key: String) async {
