@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import AppKit
+import Combine
 
 @MainActor
 class StoreManager: ObservableObject {
@@ -17,9 +18,22 @@ class StoreManager: ObservableObject {
     @Published private(set) var hasActiveEntitlement: Bool = false
     @Published private(set) var productLoadState: ProductLoadState = .loading
     @Published private(set) var lastLoadError: String? = nil
-    
+
+    #if FATCAT_DIRECT
+    /// True when this Mac holds a valid direct-download license. Kept in sync
+    /// with DirectLicenseManager so every existing `isUnlocked` call site works
+    /// unchanged. The App Store build compiles this branch out.
+    @Published private(set) var directLicenseActive: Bool = false
+    private var directLicenseCancellable: AnyCancellable?
+    #endif
+
     var isUnlocked: Bool {
-        hasActiveEntitlement
+        if hasActiveEntitlement { return true }
+        #if FATCAT_DIRECT
+        return directLicenseActive
+        #else
+        return false
+        #endif
     }
 
     private var updateListenerTask: Task<Void, Error>? = nil
@@ -30,7 +44,21 @@ class StoreManager: ObservableObject {
     private init() {
         // Start listening to transactions immediately
         updateListenerTask = listenForTransactions()
-        
+
+        #if FATCAT_DIRECT
+        // Direct-download entitlement. Activation happens in the license
+        // sheet/window; this keeps the existing premium gates in sync.
+        directLicenseCancellable = DirectLicenseManager.shared.$isLicensed
+            .receive(on: RunLoop.main)
+            .sink { [weak self] licensed in
+                self?.directLicenseActive = licensed
+            }
+        Task { @MainActor in
+            await DirectLicenseManager.shared.refreshIfNeeded()
+            directLicenseActive = DirectLicenseManager.shared.isLicensed
+        }
+        #endif
+
         Task {
             await fetchProducts()
             await updateEntitlements()

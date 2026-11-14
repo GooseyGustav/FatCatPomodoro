@@ -146,6 +146,28 @@ The script submits the zip to Apple's notary service, waits for `Accepted` statu
 
 Creates a drag-to-Applications `.dmg` at `build/FatCatPomodoro-1.0.dmg`. Hand this file off to be hosted on the download server.
 
+### Direct-download licensing
+
+The direct build is sold at `asifthatworks.com/fatcatpomodoro` and activated with a
+license key. It embeds [`LicenseKit`](https://github.com/GooseyGustav/asifthatworks-licensekit)
+and verifies a signed `LIC1.` envelope offline:
+
+| Setting | Value |
+|---|---|
+| API | `https://api.asifthatworks.com` |
+| Product ID | `fatcatpomodoro` (`FATC` keys) |
+| Public key / kid | `FATCLicensePublicKey` / `FATCLicenseKeyID` in `Info.plist` |
+| URL scheme | `fatcatpomodoro://license?key=…` |
+| Entitlement | one-time Pro, 3 Macs, 3 free sessions/day without it |
+
+The Mac App Store build must not contain the direct-purchase UI:
+`scripts/build_mas.sh` passes `SWIFT_ACTIVE_COMPILATION_CONDITIONS=FATCAT_APPSTORE`,
+which compiles out `DirectLicenseManager`, the activation views, and every buy link.
+
+To rotate signing keys, run `make keys` in `asifthatworks-licensing`, put the new
+private key on the server, replace `FATCLicensePublicKey` in `Info.plist` and
+`project.yml`, then ship an update.
+
 ### Smoke-test on a clean Mac
 
 1. Copy `build/FatCatPomodoro-1.0.dmg` to a fresh Mac (or VM) that has never seen the app.

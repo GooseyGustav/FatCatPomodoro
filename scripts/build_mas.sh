@@ -47,7 +47,8 @@ xcodebuild archive \
     CODE_SIGN_IDENTITY="" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
-    DEVELOPMENT_TEAM=NZJ6XP9B66 2>&1 | grep -E "error:|warning:| ARCHIVE |✓|❌" || true
+    DEVELOPMENT_TEAM=NZJ6XP9B66 \
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS="FATCAT_APPSTORE" 2>&1 | grep -E "error:|warning:| ARCHIVE |✓|❌" || true
 
 if [ ! -d "$APP_IN_ARCHIVE" ]; then
     echo "❌  Archive failed — app not found at $APP_IN_ARCHIVE"

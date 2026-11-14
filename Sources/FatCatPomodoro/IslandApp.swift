@@ -25,11 +25,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var breakTimerWindow: NSWindow?
     var alertWindow: NSWindow?
     var extendPromptWindow: NSWindow?
+    #if FATCAT_DIRECT
+    var licenseWindow: NSWindow?
+    #endif
     let pomodoroManager = PomodoroManager()
     private var cancellables = Set<AnyCancellable>()
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
+            #if FATCAT_DIRECT
+            if DirectLicenseManager.shared.handle(url: url) {
+                showLicenseWindow()
+                continue
+            }
+            #endif
             JarviManager.shared.handleDeepLink(url)
         }
     }
@@ -83,6 +92,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         expandItem.target = self
         menu.addItem(expandItem)
 
+        #if FATCAT_DIRECT
+        let licenseItem = NSMenuItem(title: "License…", action: #selector(menuLicense), keyEquivalent: "")
+        licenseItem.target = self
+        menu.addItem(licenseItem)
+        #endif
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "Quit FatCatPomodoro", action: #selector(menuQuit), keyEquivalent: "q")
@@ -116,6 +131,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func menuQuit() {
         NSApp.terminate(nil)
     }
+
+    #if FATCAT_DIRECT
+    @objc private func menuLicense() {
+        showLicenseWindow()
+    }
+
+    private func showLicenseWindow() {
+        if licenseWindow == nil {
+            let win = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 420, height: 470),
+                styleMask: [.titled, .closable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            win.title = "FatCatPomodoro License"
+            win.isReleasedWhenClosed = false
+            win.center()
+            win.contentView = NSHostingView(rootView: DirectLicenseView(onClose: { [weak win] in
+                win?.close()
+            }))
+            licenseWindow = win
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        licenseWindow?.makeKeyAndOrderFront(nil)
+    }
+    #endif
     
     private func setupHotkeys() {
         HotkeyManager.shared.onToggleTimer = { [weak self] in

@@ -7,6 +7,11 @@ options:
   groupSortPosition: top
   generateEmptyDirectories: true
 
+packages:
+  LicenseKit:
+    url: https://github.com/GooseyGustav/asifthatworks-licensekit.git
+    branch: main
+
 configs:
   Debug: debug
   Release: release
@@ -42,12 +47,21 @@ targetTemplates:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSCalendarsFullAccessUsageDescription: "FatCatPomodoro logs your completed focus sessions to a calendar you choose and shows your upcoming events as quick-start focus suggestions."
         NSCalendarsUsageDescription: "FatCatPomodoro logs your completed focus sessions to a calendar you choose and shows your upcoming events as quick-start focus suggestions."
+        NSAppleEventsUsageDescription: "FatCatPomodoro can automatically turn Do Not Disturb on and off around focus sessions by controlling Control Center."
         NSRemindersFullAccessUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         NSRemindersUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
+        FATCLicenseAPIBaseURL: "https://api.asifthatworks.com"
+        FATCLicenseKeyID: "fatcatpomodoro-2026-01"
+        FATCLicensePublicKey: "I5DN0FgCd9HX4a1lHNQvzcRm07AIyhuQ842nR1KmlHo"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.fatcat.FatCatPomodoro.license
+            CFBundleURLSchemes:
+              - fatcatpomodoro
     entitlements:
       path: Sources/FatCatPomodoro/FatCatPomodoro.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        com.apple.security.automation.apple-events: true
         com.apple.security.network.client: true
         # Covers both Calendar and Reminders EventKit access on macOS —
         # there is no separate ".reminders" sandbox entitlement (iOS-only key,
@@ -63,6 +77,7 @@ targetTemplates:
         CODE_SIGN_ENTITLEMENTS: Sources/FatCatPomodoro/FatCatPomodoro.entitlements
         INFOPLIST_FILE: Sources/FatCatPomodoro/Info.plist
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) FATCAT_DIRECT"
 
 schemes:
   FatCatPomodoro:
@@ -77,3 +92,5 @@ schemes:
 targets:
   FatCatPomodoro:
     templates: [AppBase]
+    dependencies:
+      - package: LicenseKit

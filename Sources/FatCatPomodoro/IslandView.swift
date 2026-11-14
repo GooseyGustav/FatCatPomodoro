@@ -1560,6 +1560,9 @@ struct SettingsQuickSetupView: View {
 
     @ViewBuilder
     private var storeSection: some View {
+        #if FATCAT_DIRECT
+        DirectLicenseSection(compact: true)
+        #else
         VStack(alignment: .leading, spacing: 10) {
             Text("PREMIUM / SUPPORT")
                 .font(.system(size: 9, weight: .black))
@@ -1612,6 +1615,7 @@ struct SettingsQuickSetupView: View {
                 .cornerRadius(8)
             }
         }
+        #endif
     }
     
     private var advancedSettingsContent: some View {
@@ -2142,6 +2146,12 @@ struct PaywallExpandedView: View {
                     .padding(.horizontal, 20)
             }
 
+            // Direct-download builds sell a lifetime key on the website and
+            // activate it in-app; the Mac App Store build keeps StoreKit.
+            #if FATCAT_DIRECT
+            DirectLicenseSection()
+                .padding(.top, 4)
+            #else
             // Purchases must anchor to a real key window (macOS 15.2+ StoreKit
             // requirement) — PurchaseCoordinator handles that; these buttons stay
             // in the island's own style.
@@ -2214,6 +2224,7 @@ struct PaywallExpandedView: View {
 
             SubscriptionLegalView(monthlyPrice: storeManager.monthlyProduct?.displayPrice)
                 .padding(.top, 8)
+            #endif
         }
         .padding(.top, 16)
         .padding(.bottom, 24)
