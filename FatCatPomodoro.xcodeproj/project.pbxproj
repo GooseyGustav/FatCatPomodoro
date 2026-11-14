@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0126A1B5E33EB6BEA194F6FB /* cleancat_safari.mov in Resources */ = {isa = PBXBuildFile; fileRef = 75234A73BD095D23BD7D143F /* cleancat_safari.mov */; };
 		048040C9FBEC00B81EBC84E3 /* FatCatPomodoro.png in Resources */ = {isa = PBXBuildFile; fileRef = 307F6CF0DA98F37B2484353F /* FatCatPomodoro.png */; };
 		04A3847E94E9C214ADF44AD5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D622D2297642149D28C78B3 /* Assets.xcassets */; };
 		0550010537B30B9F894E3FD7 /* IslandWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A22B0A8A4530AE0D837431E /* IslandWindow.swift */; };
 		28E73CFF771F8DA59731DBAA /* PomodoroActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB235001561BCDC4E4D4443 /* PomodoroActivityView.swift */; };
 		2E929D283F5A9FFC282566C8 /* HorizontalDialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B134928F0CEBC9159EE686 /* HorizontalDialView.swift */; };
 		33996C4A96408555681F7572 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC20ECDAE162667D07E849A5 /* LaunchAtLoginManager.swift */; };
+		35843CF17C8198A4104CC6B5 /* LicenseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = F708E615EEF27E2EEB4644D0 /* LicenseConfig.swift */; };
 		4379013C0FFF36D2341CF68A /* StoreConfiguration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 911C9EA72AD2ADDE50B8788B /* StoreConfiguration.storekit */; };
 		4C38B3F88CCA5BAA34774E27 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C07D47BD4E4C92F917C7BC01 /* PrivacyInfo.xcprivacy */; };
 		4D8EC5FCCB93D4696F3DB027 /* LoopingVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6FD14AF85AD2AB969F2868B /* LoopingVideoPlayer.swift */; };
@@ -26,12 +26,15 @@
 		8A03926F61664AE53DF4E8FD /* IslandApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7886602B476919F5DDF7AF9 /* IslandApp.swift */; };
 		9491BF6A047FEA62E1AACDEE /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98903B45656C042FEC8A4B19 /* StoreManager.swift */; };
 		A60B82101282B00FB2D341C5 /* face_cat.png in Resources */ = {isa = PBXBuildFile; fileRef = E8C3938410DDA599A8500A48 /* face_cat.png */; };
+		B52A83CB86511366CD134255 /* DirectLicenseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF9E249C56825FA41D32DC21 /* DirectLicenseView.swift */; };
 		BD5516CB213C6D6208EB71C4 /* MusicManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F04F6B27857427ADCBE682 /* MusicManager.swift */; };
+		C3462F0C3247694DC8F3453F /* LicenseKit in Frameworks */ = {isa = PBXBuildFile; productRef = 31E2212D8366E77520B04A84 /* LicenseKit */; };
 		DBB7DA394124D8CF3D918435 /* PomodoroHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB865F42C61E88E0BE5FE920 /* PomodoroHistoryManager.swift */; };
 		DF91BE094D04A9485CA27DF9 /* cleancat.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = FCA4C414B16FC2823FFAC70A /* cleancat.mp4 */; };
 		E1741B636F8E7F657A2608EA /* face_cat.icns in Resources */ = {isa = PBXBuildFile; fileRef = FA23ED5FB2DF87CD9D8E92E9 /* face_cat.icns */; };
 		E1E03247150D194044927FAC /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EAA008E37BF38D6C8DDED49 /* HotkeyManager.swift */; };
 		EFEE9310EBCBE1A0F23495F3 /* IslandView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156A6D0992E77D4FB864CD58 /* IslandView.swift */; };
+		F1BE237F2221EBB18000AE8E /* LicenseManagerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 846EA411D42D3FE222B80996 /* LicenseManagerModel.swift */; };
 		F39AA9937DC664C66F8DC576 /* FatCatPomodoro.icns in Resources */ = {isa = PBXBuildFile; fileRef = 4E20FC9D363525DBD639E468 /* FatCatPomodoro.icns */; };
 /* End PBXBuildFile section */
 
@@ -45,8 +48,8 @@
 		3CCD5B3FDA2554BAD351E52D /* PomodoroManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroManager.swift; sourceTree = "<group>"; };
 		4E20FC9D363525DBD639E468 /* FatCatPomodoro.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = FatCatPomodoro.icns; sourceTree = "<group>"; };
 		55B6A920A53CC077B4F31671 /* FatCatPomodoro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FatCatPomodoro.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		75234A73BD095D23BD7D143F /* cleancat_safari.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = cleancat_safari.mov; sourceTree = "<group>"; };
 		75A0ADE9D13D72676858658B /* ScoreComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreComponents.swift; sourceTree = "<group>"; };
+		846EA411D42D3FE222B80996 /* LicenseManagerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManagerModel.swift; sourceTree = "<group>"; };
 		911C9EA72AD2ADDE50B8788B /* StoreConfiguration.storekit */ = {isa = PBXFileReference; path = StoreConfiguration.storekit; sourceTree = "<group>"; };
 		92B134928F0CEBC9159EE686 /* HorizontalDialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalDialView.swift; sourceTree = "<group>"; };
 		98903B45656C042FEC8A4B19 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
@@ -55,16 +58,29 @@
 		9E943987BCA84F4295CD4A21 /* StreakManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreakManager.swift; sourceTree = "<group>"; };
 		9EAA008E37BF38D6C8DDED49 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		BC20ECDAE162667D07E849A5 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		BF9E249C56825FA41D32DC21 /* DirectLicenseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectLicenseView.swift; sourceTree = "<group>"; };
 		C07D47BD4E4C92F917C7BC01 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C6FD14AF85AD2AB969F2868B /* LoopingVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopingVideoPlayer.swift; sourceTree = "<group>"; };
 		DB865F42C61E88E0BE5FE920 /* PomodoroHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroHistoryManager.swift; sourceTree = "<group>"; };
 		E77355591CD4EB2D54E99E0B /* JarviManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarviManager.swift; sourceTree = "<group>"; };
 		E8C3938410DDA599A8500A48 /* face_cat.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = face_cat.png; sourceTree = "<group>"; };
+		F708E615EEF27E2EEB4644D0 /* LicenseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseConfig.swift; sourceTree = "<group>"; };
 		F7886602B476919F5DDF7AF9 /* IslandApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandApp.swift; sourceTree = "<group>"; };
 		F8F04F6B27857427ADCBE682 /* MusicManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicManager.swift; sourceTree = "<group>"; };
 		FA23ED5FB2DF87CD9D8E92E9 /* face_cat.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = face_cat.icns; sourceTree = "<group>"; };
 		FCA4C414B16FC2823FFAC70A /* cleancat.mp4 */ = {isa = PBXFileReference; path = cleancat.mp4; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B3319C033A1A67ABD4C05D29 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3462F0C3247694DC8F3453F /* LicenseKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		3DB8C0ACC8EBEE3A6F7D20A3 /* Products */ = {
@@ -73,6 +89,16 @@
 				55B6A920A53CC077B4F31671 /* FatCatPomodoro.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		66235E10D399FFC80D4D4F9C /* License */ = {
+			isa = PBXGroup;
+			children = (
+				BF9E249C56825FA41D32DC21 /* DirectLicenseView.swift */,
+				F708E615EEF27E2EEB4644D0 /* LicenseConfig.swift */,
+				846EA411D42D3FE222B80996 /* LicenseManagerModel.swift */,
+			);
+			path = License;
 			sourceTree = "<group>";
 		};
 		682F47F40A6145091E7908A8 = {
@@ -86,7 +112,6 @@
 		7856C2C375E4990E7311519F /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				75234A73BD095D23BD7D143F /* cleancat_safari.mov */,
 				FCA4C414B16FC2823FFAC70A /* cleancat.mp4 */,
 				FA23ED5FB2DF87CD9D8E92E9 /* face_cat.icns */,
 				E8C3938410DDA599A8500A48 /* face_cat.png */,
@@ -110,6 +135,7 @@
 		991F1BBF27E714D35A34E9F6 /* FatCatPomodoro */ = {
 			isa = PBXGroup;
 			children = (
+				66235E10D399FFC80D4D4F9C /* License */,
 				7856C2C375E4990E7311519F /* Resources */,
 				8264B44D4166721E04D4662B /* Views */,
 				2D622D2297642149D28C78B3 /* Assets.xcassets */,
@@ -143,6 +169,7 @@
 			buildPhases = (
 				728E8DB3B28AE3EF43A1E997 /* Sources */,
 				CEC213488F45BB63B5C55C12 /* Resources */,
+				B3319C033A1A67ABD4C05D29 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -150,6 +177,7 @@
 			);
 			name = FatCatPomodoro;
 			packageProductDependencies = (
+				31E2212D8366E77520B04A84 /* LicenseKit */,
 			);
 			productName = FatCatPomodoro;
 			productReference = 55B6A920A53CC077B4F31671 /* FatCatPomodoro.app */;
@@ -179,6 +207,9 @@
 			);
 			mainGroup = 682F47F40A6145091E7908A8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8A076EF86B29CFB4A295D66E /* XCRemoteSwiftPackageReference "asifthatworks-licensekit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3DB8C0ACC8EBEE3A6F7D20A3 /* Products */;
 			projectDirPath = "";
@@ -200,7 +231,6 @@
 				4C38B3F88CCA5BAA34774E27 /* PrivacyInfo.xcprivacy in Resources */,
 				4379013C0FFF36D2341CF68A /* StoreConfiguration.storekit in Resources */,
 				DF91BE094D04A9485CA27DF9 /* cleancat.mp4 in Resources */,
-				0126A1B5E33EB6BEA194F6FB /* cleancat_safari.mov in Resources */,
 				E1741B636F8E7F657A2608EA /* face_cat.icns in Resources */,
 				A60B82101282B00FB2D341C5 /* face_cat.png in Resources */,
 			);
@@ -214,6 +244,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				88A030C03548011B13DCB0C2 /* CalendarManager.swift in Sources */,
+				B52A83CB86511366CD134255 /* DirectLicenseView.swift in Sources */,
 				2E929D283F5A9FFC282566C8 /* HorizontalDialView.swift in Sources */,
 				E1E03247150D194044927FAC /* HotkeyManager.swift in Sources */,
 				8A03926F61664AE53DF4E8FD /* IslandApp.swift in Sources */,
@@ -221,6 +252,8 @@
 				0550010537B30B9F894E3FD7 /* IslandWindow.swift in Sources */,
 				87B5128D1E9F19F12016ACCD /* JarviManager.swift in Sources */,
 				33996C4A96408555681F7572 /* LaunchAtLoginManager.swift in Sources */,
+				35843CF17C8198A4104CC6B5 /* LicenseConfig.swift in Sources */,
+				F1BE237F2221EBB18000AE8E /* LicenseManagerModel.swift in Sources */,
 				4D8EC5FCCB93D4696F3DB027 /* LoopingVideoPlayer.swift in Sources */,
 				BD5516CB213C6D6208EB71C4 /* MusicManager.swift in Sources */,
 				65F78ED9FC103B682B0D024A /* NotificationManager.swift in Sources */,
@@ -301,7 +334,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/FatCatPomodoro/FatCatPomodoro.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 6;
 				INFOPLIST_FILE = Sources/FatCatPomodoro/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
@@ -383,7 +416,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/FatCatPomodoro/FatCatPomodoro.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 6;
 				INFOPLIST_FILE = Sources/FatCatPomodoro/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
@@ -415,6 +448,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8A076EF86B29CFB4A295D66E /* XCRemoteSwiftPackageReference "asifthatworks-licensekit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/GooseyGustav/asifthatworks-licensekit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		31E2212D8366E77520B04A84 /* LicenseKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A076EF86B29CFB4A295D66E /* XCRemoteSwiftPackageReference "asifthatworks-licensekit" */;
+			productName = LicenseKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6C57339334EC7204D2E7E177 /* Project object */;
 }

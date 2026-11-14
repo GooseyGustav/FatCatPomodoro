@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Combine
 import StoreKit
+import LicenseKit
 
 @main
 struct IslandApp: App {
@@ -29,7 +30,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            JarviManager.shared.handleDeepLink(url)
+            if url.scheme?.lowercased() == LicenseConfig.activateScheme {
+                handleLicenseDeepLink(url)
+            } else {
+                JarviManager.shared.handleDeepLink(url)
+            }
+        }
+    }
+
+    private func handleLicenseDeepLink(_ url: URL) {
+        if let deepLink = LicenseDeepLink.parse(url, scheme: LicenseConfig.activateScheme) {
+            switch deepLink {
+            case .activate(let key):
+                Task { await LicenseManagerModel.shared.activate(key: key) }
+            case .deactivate:
+                Task { await LicenseManagerModel.shared.deactivate() }
+            case .open:
+                break
+            }
+            return
+        }
+        // Also accept fatcatpomodoro://activate?key=...
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let key = components.queryItems?.first(where: { $0.name == "key" })?.value,
+           !key.isEmpty {
+            Task { await LicenseManagerModel.shared.activate(key: key) }
         }
     }
 

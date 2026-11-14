@@ -9,11 +9,15 @@ let package = Package(
     products: [
         .executable(name: "FatCatPomodoro", targets: ["FatCatPomodoro"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/GooseyGustav/asifthatworks-licensekit.git", branch: "main")
+    ],
     targets: [
         .executableTarget(
             name: "FatCatPomodoro",
-            dependencies: [],
+            dependencies: [
+                .product(name: "LicenseKit", package: "asifthatworks-licensekit")
+            ],
             path: "Sources/FatCatPomodoro",
             exclude: ["Info.plist"],
             resources: [

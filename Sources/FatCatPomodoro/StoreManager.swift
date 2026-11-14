@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import AppKit
+import Combine
 
 @MainActor
 class StoreManager: ObservableObject {
@@ -17,9 +18,18 @@ class StoreManager: ObservableObject {
     @Published private(set) var hasActiveEntitlement: Bool = false
     @Published private(set) var productLoadState: ProductLoadState = .loading
     @Published private(set) var lastLoadError: String? = nil
-    
+
+    /// Direct builds unlock through the shared license service. The App Store
+    /// build keeps StoreKit behind the APPSTORE flag.
+    private let license = LicenseManagerModel.shared
+    private var cancellables = Set<AnyCancellable>()
+
     var isUnlocked: Bool {
-        hasActiveEntitlement
+        #if APPSTORE
+        return hasActiveEntitlement
+        #else
+        return license.isLicensed
+        #endif
     }
 
     private var updateListenerTask: Task<Void, Error>? = nil
@@ -28,6 +38,7 @@ class StoreManager: ObservableObject {
     private let monthlyProductId = "com.fatcat.FatCatPomodoro.monthly"
 
     private init() {
+        #if APPSTORE
         // Start listening to transactions immediately
         updateListenerTask = listenForTransactions()
         
@@ -44,6 +55,13 @@ class StoreManager: ObservableObject {
                 await fetchProducts()
             }
         }
+        #endif
+
+        // Republish license changes so existing storeManager.isUnlocked views update.
+        license.$isLicensed
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     deinit {

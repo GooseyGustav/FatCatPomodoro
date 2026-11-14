@@ -11,6 +11,11 @@ configs:
   Debug: debug
   Release: release
 
+packages:
+  LicenseKit:
+    url: https://github.com/GooseyGustav/asifthatworks-licensekit.git
+    branch: main
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -18,6 +23,8 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: "NZJ6XP9B66"
+  Debug:
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LICENSE_STAGING"
 
 targetTemplates:
   AppBase:
@@ -40,15 +47,21 @@ targetTemplates:
         ITSAppUsesNonExemptEncryption: false
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSAppleEventsUsageDescription: "FatCatPomodoro can automatically turn Do Not Disturb on and off around focus sessions by controlling Control Center."
         NSCalendarsFullAccessUsageDescription: "FatCatPomodoro logs your completed focus sessions to a calendar you choose and shows your upcoming events as quick-start focus suggestions."
         NSCalendarsUsageDescription: "FatCatPomodoro logs your completed focus sessions to a calendar you choose and shows your upcoming events as quick-start focus suggestions."
         NSRemindersFullAccessUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
         NSRemindersUsageDescription: "FatCatPomodoro reads your reminders to suggest tasks you can focus on and can mark them complete when a focus session ends."
+        CFBundleURLTypes:
+          - CFBundleURLName: com.fatcat.FatCatPomodoro
+            CFBundleURLSchemes:
+              - fatcatpomodoro
     entitlements:
       path: Sources/FatCatPomodoro/FatCatPomodoro.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.automation.apple-events: true
         # Covers both Calendar and Reminders EventKit access on macOS —
         # there is no separate ".reminders" sandbox entitlement (iOS-only key,
         # rejected by App Store validation).
@@ -77,3 +90,5 @@ schemes:
 targets:
   FatCatPomodoro:
     templates: [AppBase]
+    dependencies:
+      - package: LicenseKit

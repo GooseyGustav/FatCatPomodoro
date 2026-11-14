@@ -1607,6 +1607,7 @@ struct SettingsQuickSetupView: View {
                 .background(Color.white.opacity(0.04))
                 .cornerRadius(8)
             } else {
+                #if APPSTORE
                 VStack(spacing: 8) {
                     Text("Support Development!")
                         .font(.system(size: 10, weight: .semibold))
@@ -1638,6 +1639,12 @@ struct SettingsQuickSetupView: View {
                 .padding()
                 .background(Color.white.opacity(0.04))
                 .cornerRadius(8)
+                #else
+                DirectLicenseView()
+                    .padding()
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(8)
+                #endif
             }
         }
     }
@@ -2170,6 +2177,7 @@ struct PaywallExpandedView: View {
                     .padding(.horizontal, 20)
             }
 
+            #if APPSTORE
             // Purchases must anchor to a real key window (macOS 15.2+ StoreKit
             // requirement) — PurchaseCoordinator handles that; these buttons stay
             // in the island's own style.
@@ -2242,6 +2250,10 @@ struct PaywallExpandedView: View {
 
             SubscriptionLegalView(monthlyPrice: storeManager.monthlyProduct?.displayPrice)
                 .padding(.top, 8)
+            #else
+            DirectLicenseView()
+                .padding(.top, 4)
+            #endif
         }
         .padding(.top, 16)
         .padding(.bottom, 24)
